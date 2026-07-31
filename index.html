@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学級診断ノート — WEBQU帳票を読み解く</title>
+<meta name="description" content="WEBQU（Q-U）の全体表を貼り付けるだけで、学級の状態診断・具体的な実行策・AIに渡す匿名プロンプトを作ります。データは端末の外に出ません。">
+<style>
+:root{
+  --paper:#ECEDE8;
+  --surface:#FFFFFF;
+  --surface-sunk:#E4E6E0;
+  --ink:#17211F;
+  --ink-2:#4A5450;
+  --ink-3:#7C837E;
+  --deep:#123B37;
+  --accent:#2F6F62;
+  --accent-soft:#DDE8E4;
+  --alert:#B2402C;
+  --alert-soft:#F6E3DE;
+  --warn:#8A6212;
+  --warn-soft:#F4EBD6;
+  --rule:#C9CBC3;
+  --rule-soft:#DCDED7;
+  --r:3px;
+  --f-disp:"BIZ UDPMincho","BIZ UDP明朝","Yu Mincho","YuMincho","Hiragino Mincho ProN","MS PMincho",serif;
+  --f-body:"BIZ UDPGothic","BIZ UDPゴシック","Yu Gothic UI","Yu Gothic","Hiragino Sans","Noto Sans JP","Meiryo",sans-serif;
+  --f-data:"BIZ UDGothic","BIZ UDゴシック","Yu Gothic","Hiragino Sans","Meiryo",sans-serif;
+  --f-mono:ui-monospace,"SFMono-Regular","Cascadia Mono",Consolas,"BIZ UDGothic",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--f-body);font-size:15px;line-height:1.85;
+  font-feature-settings:"palt" 1;
+}
+h1,h2,h3{margin:0;font-weight:400;line-height:1.4}
+p{margin:0 0 .8em}
+a{color:var(--accent)}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-data);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ── 送信計器（署名要素） ───────────────── */
+.meter{
+  position:sticky;top:0;z-index:50;
+  background:var(--deep);color:#DCE6E2;
+  border-bottom:1px solid #0B2926;
+}
+.meter-in{
+  max-width:1080px;margin:0 auto;padding:7px 20px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  font-size:12.5px;line-height:1.5;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:#6FD8B4;flex:none;
+  box-shadow:0 0 0 0 rgba(111,216,180,.7);animation:pulse 3.2s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(111,216,180,.55)}70%{box-shadow:0 0 0 7px rgba(111,216,180,0)}100%{box-shadow:0 0 0 0 rgba(111,216,180,0)}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+.meter b{font-weight:400;color:#fff}
+.meter .sep{color:#3E6560}
+.meter .tallies{display:flex;gap:12px;margin-left:auto;align-items:center}
+.meter .tally{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.meter .tally i{font-style:normal;color:#8FB3AC}
+.meter button{
+  background:transparent;border:1px solid #3E6560;color:#B8D2CC;
+  border-radius:var(--r);padding:2px 9px;font-size:11.5px;
+}
+.meter button:hover{border-color:#6FD8B4;color:#fff}
+
+/* ── ヘッダ ───────────────── */
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+header.hero{padding:52px 0 34px}
+.eyebrow{font-size:11.5px;letter-spacing:.22em;color:var(--ink-3);margin-bottom:18px}
+h1{font-family:var(--f-disp);font-size:clamp(30px,5.2vw,46px);letter-spacing:.02em;line-height:1.28}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{margin-top:16px;max-width:44em;color:var(--ink-2);font-size:15.5px}
+
+/* ── ステップ・レール ───────────────── */
+nav.rail{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:var(--r);
+  margin:30px 0 0;overflow:hidden;
+}
+nav.rail button{
+  background:var(--surface);border:0;padding:13px 14px;text-align:left;
+  display:flex;gap:11px;align-items:baseline;color:var(--ink-2);
+  transition:background .12s;
+}
+nav.rail button:hover{background:#F7F8F5}
+nav.rail button[aria-current="true"]{background:var(--deep);color:#fff}
+nav.rail button[aria-current="true"] .rn{color:#6FD8B4}
+nav.rail button[disabled]{opacity:.42;cursor:default}
+.rn{font-family:var(--f-data);font-size:11px;letter-spacing:.1em;color:var(--ink-3);flex:none}
+.rt{font-size:14px}
+.rs{display:block;font-size:11.5px;color:inherit;opacity:.66;line-height:1.5}
+
+main{padding:34px 0 90px}
+section.step{display:none}
+section.step.on{display:block}
+
+/* ── 共通パーツ ───────────────── */
+.card{background:var(--surface);border:1px solid var(--rule-soft);border-radius:var(--r);padding:22px 24px;margin-bottom:16px}
+.card.sunk{background:transparent;border-style:dashed}
+h2{font-family:var(--f-disp);font-size:21px;letter-spacing:.02em;margin-bottom:6px}
+h2 .k{font-family:var(--f-data);font-size:11px;letter-spacing:.14em;color:var(--ink-3);display:block;margin-bottom:5px}
+h3{font-size:15px;font-weight:400;margin-bottom:8px}
+.hint{font-size:13px;color:var(--ink-3);line-height:1.75}
+.divider{height:1px;background:var(--rule-soft);margin:22px 0}
+
+textarea,input[type=text],input[type=number],select{
+  font-family:var(--f-body);font-size:14px;color:var(--ink);
+  background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);
+  padding:9px 11px;width:100%;
+}
+textarea{font-family:var(--f-mono);font-size:12.5px;line-height:1.65;resize:vertical;white-space:pre;overflow-x:auto}
+input[type=number]{width:72px;text-align:right;font-family:var(--f-data)}
+label{font-size:13.5px}
+
+.btn{
+  background:var(--deep);color:#fff;border:1px solid var(--deep);
+  border-radius:var(--r);padding:9px 20px;font-size:14px;
+}
+.btn:hover{background:#0B2926}
+.btn.ghost{background:transparent;color:var(--deep);border-color:var(--rule)}
+.btn.ghost:hover{background:#F7F8F5;border-color:var(--accent)}
+.btn.sm{padding:5px 12px;font-size:12.5px}
+.btn:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+.note{border-left:2px solid var(--accent);padding:2px 0 2px 14px;color:var(--ink-2);font-size:13.5px;margin:14px 0}
+.note.alert{border-left-color:var(--alert)}
+.flash{padding:10px 14px;border-radius:var(--r);font-size:13.5px;margin-top:12px}
+.flash.ok{background:var(--accent-soft);color:#0E4238}
+.flash.bad{background:var(--alert-soft);color:#7B2818}
+
+table{width:100%;border-collapse:collapse;font-family:var(--f-data);font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--rule-soft);text-align:left;vertical-align:baseline}
+th{font-weight:400;color:var(--ink-3);font-size:11.5px;letter-spacing:.05em;border-bottom-color:var(--rule)}
+td.n,th.n{text-align:right}
+tbody tr:hover{background:#F7F8F5}
+.scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+
+.chip{display:inline-block;font-family:var(--f-data);font-size:11.5px;padding:1px 7px;border-radius:2px;background:var(--surface-sunk);color:var(--ink-2);margin-right:3px;white-space:nowrap}
+.chip.g1{background:var(--accent-soft);color:#0E4238}
+.chip.g2{background:var(--warn-soft);color:var(--warn)}
+.chip.g3{background:#E7E3EF;color:#4B3E6B}
+.chip.g4{background:var(--alert-soft);color:#7B2818}
+.chip.on{background:var(--deep);color:#fff}
+
+/* 4群 分布バー */
+.stack{display:flex;height:26px;border-radius:2px;overflow:hidden;border:1px solid var(--rule)}
+.stack span{display:flex;align-items:center;justify-content:center;font-family:var(--f-data);font-size:11.5px}
+.s1{background:#2F6F62;color:#fff}
+.s2{background:#C79A3C;color:#33260A}
+.s3{background:#7E6FA8;color:#fff}
+.s4{background:#B2402C;color:#fff}
+
+/* 領域バー */
+.dom{display:grid;grid-template-columns:8.5em 1fr 5.5em;gap:10px;align-items:center;padding:5px 0;font-size:13px}
+.dom .track{position:relative;height:9px;background:var(--surface-sunk);border-radius:1px}
+.dom .fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:1px}
+.dom .fill.rev{background:#A85B48}
+.dom .norm{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--ink);opacity:.55}
+.dom .val{font-family:var(--f-data);font-variant-numeric:tabular-nums;text-align:right;font-size:12.5px}
+.dom .val i{font-style:normal;color:var(--ink-3);font-size:11.5px}
+
+/* 項目フラグ */
+.flagrow{display:grid;grid-template-columns:2.4em 1fr 7em 2.6em;gap:9px;align-items:center;padding:4px 0;border-bottom:1px solid var(--rule-soft);font-size:13px}
+.flagrow .fn{font-family:var(--f-data);color:var(--ink-3);font-size:11.5px}
+.flagrow .fb{height:8px;background:var(--surface-sunk);border-radius:1px;position:relative}
+.flagrow .fb i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:var(--ink-3)}
+.flagrow .fb i.hi{background:var(--alert)}
+.flagrow .fb i.mid{background:var(--warn)}
+.flagrow .fc{text-align:right;font-family:var(--f-data);font-size:12.5px}
+
+/* 児童カード */
+.pupil{border:1px solid var(--rule-soft);border-radius:var(--r);padding:13px 15px;margin-bottom:9px;background:var(--surface)}
+.pupil.lv3{border-left:3px solid var(--alert)}
+.pupil.lv2{border-left:3px solid var(--warn)}
+.pupil.lv1{border-left:3px solid var(--accent)}
+.pupil-h{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px}
+.pupil-h .no{font-family:var(--f-data);font-size:12px;background:var(--deep);color:#fff;padding:1px 7px;border-radius:2px}
+.pupil-h .nm{font-size:14.5px}
+.pupil ul{margin:6px 0 0;padding-left:1.1em;font-size:13.5px;color:var(--ink-2)}
+.pupil li{margin-bottom:2px}
+
+/* 施策 */
+.phase{margin-bottom:8px}
+.phase-h{display:flex;gap:10px;align-items:baseline;padding:16px 0 8px;border-bottom:1px solid var(--rule)}
+.phase-h .pn{font-family:var(--f-data);font-size:11px;letter-spacing:.12em;color:var(--ink-3)}
+.phase-h .pt{font-family:var(--f-disp);font-size:18px}
+.phase-h .pw{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.act{border-bottom:1px solid var(--rule-soft);padding:15px 0}
+.act-h{display:flex;gap:9px;align-items:baseline}
+.act-h input[type=checkbox]{margin-top:5px;flex:none;accent-color:var(--accent);width:15px;height:15px}
+.act-h .at{font-size:15px}
+.act .why{font-size:13px;color:var(--ink-3);margin:3px 0 8px 24px}
+.act ol{margin:0 0 0 24px;padding-left:1.15em;font-size:13.5px;color:var(--ink-2)}
+.act ol li{margin-bottom:5px}
+.act .tg{margin:9px 0 0 24px;font-size:12.5px}
+.act .tg b{font-weight:400;color:var(--ink-3);margin-right:5px}
+
+/* プロンプト */
+.scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px;margin:12px 0}
+.scope label{display:block;border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;cursor:pointer;background:var(--surface)}
+.scope label:has(input:checked){border-color:var(--deep);background:var(--accent-soft)}
+.scope label span{display:block;font-size:12px;color:var(--ink-3);line-height:1.6}
+.audit{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;margin:14px 0}
+.audit div{padding:12px 14px;font-size:13px}
+.audit div:first-child{background:var(--accent-soft);border-right:1px solid var(--rule)}
+.audit div:last-child{background:var(--alert-soft)}
+.audit h4{margin:0 0 5px;font-size:12px;font-weight:400;letter-spacing:.06em}
+.audit ul{margin:0;padding-left:1.15em}
+.audit li{margin-bottom:1px}
+#promptOut{min-height:300px}
+
+/* 2回比較 */
+.mtx{border-collapse:collapse;font-family:var(--f-data);font-size:12.5px}
+.mtx th,.mtx td{border:1px solid var(--rule-soft);padding:5px 9px;text-align:center;min-width:3.4em}
+.mtx th{background:var(--surface-sunk);color:var(--ink-2);font-size:11.5px}
+.mtx td.diag{background:#F1F3EF;color:var(--ink-3)}
+.mtx td.up{background:var(--accent-soft);color:#0E4238}
+.mtx td.down{background:var(--alert-soft);color:#7B2818}
+.mtx td.zero{color:#C2C6BE}
+.mtx caption{caption-side:top;text-align:left;font-size:11.5px;color:var(--ink-3);padding-bottom:6px;font-family:var(--f-body)}
+.delta{font-family:var(--f-data);font-variant-numeric:tabular-nums;font-size:12.5px}
+.delta.up{color:var(--accent)}
+.delta.down{color:var(--alert)}
+.delta.flat{color:var(--ink-3)}
+.movers{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.movers>div{border:1px solid var(--rule-soft);border-radius:var(--r);padding:12px 14px}
+.movers h4{margin:0 0 7px;font-size:13px;font-weight:400}
+.movers ul{margin:0;padding-left:1.15em;font-size:13px;color:var(--ink-2)}
+.movers li{margin-bottom:4px}
+@media (max-width:760px){ .movers{grid-template-columns:1fr} }
+
+.empty{text-align:center;padding:60px 20px;color:var(--ink-3);font-size:14px}
+footer{border-top:1px solid var(--rule);padding:24px 0 40px;font-size:12.5px;color:var(--ink-3)}
+
+@media (max-width:760px){
+  nav.rail{grid-template-columns:1fr 1fr}
+  .audit{grid-template-columns:1fr}
+  .audit div:first-child{border-right:0;border-bottom:1px solid var(--rule)}
+  .dom{grid-template-columns:7em 1fr 4.6em;font-size:12.5px}
+  .flagrow{grid-template-columns:2.2em 1fr 4.5em 2.4em}
+}
+@media print{
+  .meter,nav.rail,.noprint,footer{display:none!important}
+  body{background:#fff;font-size:11pt}
+  section.step{display:block!important;break-before:page}
+  section.step:first-of-type{break-before:auto}
+  .card{border-color:#999;break-inside:avoid}
+  .act,.pupil{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="meter" role="status" aria-live="polite">
+  <div class="meter-in">
+    <span class="dot" aria-hidden="true"></span>
+    <span>この端末の中だけで処理しています</span>
+    <span class="sep">／</span>
+    <span>外部サーバー・CDN・フォント配信はいっさい使いません</span>
+    <span class="tallies">
+      <span class="tally"><i>送信</i> <b id="mSent">0</b> 件</span>
+      <span class="tally"><i>遮断</i> <b id="mBlocked">0</b> 件</span>
+      <button type="button" id="mTest">動作を確かめる</button>
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">WEBQU／Q-U 全体表を読み解く</div>
+  <h1>学級診断ノート<br><em>氏名は、この画面から出ません。</em></h1>
+  <p class="lede">帳票の数字を貼り付けると、学級の状態と要対応の児童、そして明日から動かせる実行策を組み立てます。AIに相談したいときは、氏名も学校名も含まない相談文をその場で作ります。保存も送信もしないので、タブを閉じればすべて消えます。</p>
+
+  <nav class="rail" aria-label="手順">
+    <button type="button" data-go="0" aria-current="true"><span class="rn">01</span><span class="rt">貼る<span class="rs">帳票の数字を入力</span></span></button>
+    <button type="button" data-go="1" disabled><span class="rn">02</span><span class="rt">読む<span class="rs">学級と個人の診断</span></span></button>
+    <button type="button" data-go="2" disabled><span class="rn">03</span><span class="rt">動く<span class="rs">実行策の組み立て</span></span></button>
+    <button type="button" data-go="3" disabled><span class="rn">04</span><span class="rt">渡す<span class="rs">匿名の相談文を作る</span></span></button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══ 01 貼る ══ -->
+<section class="step on" id="s0">
+  <div class="card">
+    <h2><span class="k">STEP 01</span>帳票を貼り付ける</h2>
+    <p class="hint">WEBQUの全体表をExcelで開き、児童の行だけを選んでコピー→下の枠に貼り付けてください。1行に1人。氏名の列は含めても構いません（画面表示だけに使い、相談文には入りません）。小計の「計」列は入っていても自動で読み飛ばします。</p>
+    <div id="pdfZone" style="border:1px dashed var(--rule);border-radius:var(--r);padding:16px 18px;margin:14px 0 4px;background:var(--surface)">
+      <div class="row">
+        <button type="button" class="btn ghost sm" id="btnPdf">PDFの全体表を読み込む</button>
+        <input type="file" id="pdfFile" accept="application/pdf" style="display:none">
+        <span class="hint">またはこの枠にPDFをドロップ。読み取った結果は下の枠にタブ区切りで入るので、目で確かめてから診断できます。</span>
+      </div>
+      <div id="pdfMsg"></div>
+    </div>
+    <div class="row" id="modeRow" style="margin:14px 0 4px">
+      <span class="hint">読み取り方</span>
+      <label style="margin-right:14px"><input type="radio" name="mode" value="one" checked> 1回分を診る</label>
+      <label><input type="radio" name="mode" value="two"> 2回分を比べる</label>
+    </div>
+    <div class="row" style="margin:6px 0 10px">
+      <button type="button" class="btn ghost sm" id="btnSample">見本データを入れて試す</button>
+      <button type="button" class="btn ghost sm" id="btnClear">消す</button>
+      <span class="hint" id="parseHint"></span>
+    </div>
+    <label id="lblRaw" for="raw" style="display:block;margin-bottom:5px">帳票データ</label>
+    <textarea id="raw" rows="12" spellcheck="false" placeholder="1&#9;新井○○&#9;非承認&#9;3&#9;3&#9;3&#9;9&#9;4&#9;4&#9;4&#9;12&#9; …（39項目ぶんの1〜4の数字）"></textarea>
+    <div id="prevBox" style="display:none;margin-top:16px">
+      <label for="rawPrev" style="display:block;margin-bottom:5px">前回（1回目）の帳票</label>
+      <textarea id="rawPrev" rows="8" spellcheck="false" placeholder="前回のアンケート結果を、同じ形式で貼り付けてください。"></textarea>
+      <p class="hint" style="margin-top:6px">出席番号で突き合わせます。番号が変わっている場合や、転入・転出があった児童は比較の対象から外し、別に一覧で出します。</p>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button type="button" class="btn" id="btnRead">読み取って診断する</button>
+    </div>
+    <div id="parseMsg"></div>
+  </div>
+
+  <div class="card sunk">
+    <h3>判定の基準（必要なら変えられます）</h3>
+    <p class="hint">4群の判定は、帳票に「満足／不満足／非承認／侵害」の列があればそれをそのまま使います。列が無いときだけ、下の基準で推定します。既定値は実際の高学年帳票1学級29名で全員の判定が一致した値です。学年・版が違う場合は帳票の値に合わせてください。</p>
+    <div class="row" style="margin-top:12px">
+      <label>承認得点がこの値以上なら「承認あり」 <input type="number" id="cutA" value="19" min="6" max="24"></label>
+      <label>被侵害得点がこの値以下なら「侵害なし」 <input type="number" id="cutH" value="11" min="6" max="24"></label>
+    </div>
+    <div class="divider"></div>
+    <h3>全国平均（お手元の帳票の値を入れてください）</h3>
+    <p class="hint">帳票下部に印字されている「全＝全国平均」を入力します。既定値は高学年版の一例です。承認得点の全国平均は帳票によって印字が無いことがあるため、暫定値が入っています。</p>
+    <div class="row" style="margin-top:12px" id="normBox"></div>
+  </div>
+</section>
+
+<!-- ══ 02 読む ══ -->
+<section class="step" id="s1">
+  <div id="diagOut"><div class="empty">まず STEP 01 でデータを貼り付けてください。</div></div>
+</section>
+
+<!-- ══ 03 動く ══ -->
+<section class="step" id="s2">
+  <div id="planOut"><div class="empty">まず STEP 01 でデータを貼り付けてください。</div></div>
+</section>
+
+<!-- ══ 04 渡す ══ -->
+<section class="step" id="s3">
+  <div id="promptWrap"><div class="empty">まず STEP 01 でデータを貼り付けてください。</div></div>
+</section>
+
+</main>
+
+<footer>
+  <p>この画面は保存・送信・記録をいっさい行いません。再読み込みでデータは消えます。／ Q-U・WEBQUは河村茂雄氏および図書文化社の著作物です。本ツールは帳票の読み取りを補助する非公式の道具であり、診断結果は教員の判断を置き換えるものではありません。いじめ・不登校が疑われる所見は、必ず校内の組織で対応してください。</p>
+</footer>
+</div>
+
+<script>
+/* ══ 送信計器：外に出る通信をすべて遮断して数える ══ */
+(function(){
+  var sent=0, blocked=0;
+  var eSent=document.getElementById('mSent'), eBlk=document.getElementById('mBlocked');
+  function bump(){ eSent.textContent=sent; eBlk.textContent=blocked; }
+  var rejection=function(){ blocked++; bump(); return new Error('外部送信は遮断されました'); };
+  window.fetch=function(){ return Promise.reject(rejection()); };
+  var XO=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(){ rejection(); throw new Error('外部送信は遮断されました'); };
+  if(navigator.sendBeacon){ navigator.sendBeacon=function(){ rejection(); return false; }; }
+  window.WebSocket=function(){ rejection(); throw new Error('外部送信は遮断されました'); };
+  document.getElementById('mTest').addEventListener('click',function(){
+    window.fetch('https://example.com/test').catch(function(){});
+    this.textContent='遮断を確認';
+    var b=this; setTimeout(function(){ b.textContent='動作を確かめる'; },2200);
+  });
+  bump();
+})();
+</script>
+<script type="module">
+/* ══════════════════════════════════════════════
+   学級診断ノート — 端末内完結の WEBQU 読み取り
+   外部通信なし／保存なし／氏名は相談文に出さない
+   ══════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+/* ── 質問項目（高学年版39項目） ───────────────── */
+var ITEMS = [
+ 'クラスの人が声をかけてくれたり親切にしてくれる',
+ 'クラスにはいい人だなと思う友達がいる',
+ 'クラスの人から好かれ、仲間だと思われていると思う',
+ '学校で勉強していてできなかったことができると嬉しい',
+ '授業中に先生の質問に答えたり、意見を言うのは好きだ',
+ 'よい成績を取ったり勉強がわかるよう努力している',
+ 'クラスは明るく楽しい感じがする',
+ 'クラスはみんなで仲良く協力し合っていると思う',
+ 'クラスは勉強やさまざまな活動にまとまって取り組んでいる',
+ '運動や勉強、係などでクラスの人に認められている',
+ '失敗したときにクラスの人が励ましてくれることがある',
+ 'クラスの中に気持ちをわかってくれる人がいると思う',
+ '何かするときクラスの人は協力・応援してくれると思う',
+ 'クラスにいろいろな活動に取り組もうとする人がたくさんいる',
+ '意見を発表したときクラスは冷やかさず聞いてくれる',
+ 'クラスの人に嫌なことをされて辛い思いをすることがある',
+ 'クラスの人に暴力を受けて辛い思いをすることがある',
+ 'クラスの人にばかにされてクラスにいたくないと思う',
+ '休み時間などに一人ぼっちでいることがある',
+ 'クラスでグループをつくるとき最後まで残ってしまう',
+ 'クラスの人たちから無視されているようなことがある',
+ '友達が何回もSNS等で嫌な内容をSNS上に載せる',
+ 'SNS等のグループから外されたり無視をされる',
+ '友達の気持ちを考えながら話している',
+ '何か失敗したときに「ごめんなさい」と言っている',
+ '友達が話しているときは話を最後まで聞いている',
+ 'みんなで決めたことには従っている',
+ '班活動で友達が一生懸命やり失敗したときは許している',
+ '友達が何かをうまくしたとき「上手だね」とほめている',
+ '友達との約束は守っている',
+ '何か頼むとき相手に迷惑がかからないかを考えている',
+ 'みんなと同じくらい話をしている',
+ 'みんなのためになることは自分で見つけて実行している',
+ '友達が楽しんでいるときに盛り上げている',
+ '嬉しいときは笑顔などの身振りで気持ちを表している',
+ 'ほかの人に左右されずに自分の考えで行動している',
+ '自分から友達を遊びに誘っている',
+ '係の仕事のときどうやったらよいか意見を言っている',
+ '友達の中心となり何をして遊ぶか意見を出している'
+];
+
+/* ── 領域定義（from,to は1始まり／rev=逆転項目） ───────────────── */
+var DOMAINS = [
+ {key:'friend', name:'友達関係',      from:1,  to:3,  max:12, norm:10.1},
+ {key:'learn',  name:'学習意欲',      from:4,  to:6,  max:12, norm:9.6},
+ {key:'mood',   name:'学級の雰囲気',  from:7,  to:9,  max:12, norm:10.0},
+ {key:'appr',   name:'承認得点',      from:10, to:15, max:24, norm:19.5},
+ {key:'harm',   name:'被侵害得点',    from:16, to:21, max:24, norm:11.1, rev:true},
+ {key:'net',    name:'ネットいじめ',  from:22, to:23, max:8,  norm:2.1,  rev:true},
+ {key:'care',   name:'配慮のスキル',  from:24, to:31, max:32, norm:27.8},
+ {key:'rel',    name:'関わりのスキル',from:32, to:39, max:32, norm:24.3}
+];
+var REV_FROM = 16, REV_TO = 23;               // 逆転項目（高いほど問題）
+var SUBTOTAL_IDX = [3,7,11,18,25,28,37,46];   // 47列貼り付け時の「計」列位置
+
+var GROUP_ORDER = ['満足群','非承認群','侵害行為認知群','不満足群'];
+var GROUP_CLS   = {'満足群':'g1','非承認群':'g2','侵害行為認知群':'g3','不満足群':'g4'};
+var GROUP_RANK  = {'満足群':3,'非承認群':2,'侵害行為認知群':2,'不満足群':1};
+
+/* ── 2回分の突き合わせ ─────────────────
+   出席番号で対応づけ、群の移動・領域の変化・項目の変化を出す。
+   前回・今回のどちらかにしかいない児童は比較から外して別に示す。 */
+function compare(prev, curr){
+  var byNo={}; prev.pupils.forEach(function(p){ byNo[p.no]=p; });
+  var pairs=[], onlyCurr=[], onlyPrev=[];
+  curr.pupils.forEach(function(p){
+    if(byNo[p.no]!==undefined){ pairs.push({no:p.no, name:p.name||byNo[p.no].name, a:byNo[p.no], b:p}); delete byNo[p.no]; }
+    else onlyCurr.push(p);
+  });
+  Object.keys(byNo).forEach(function(k){ onlyPrev.push(byNo[k]); });
+
+  var mtx={}; GROUP_ORDER.forEach(function(g){ mtx[g]={}; GROUP_ORDER.forEach(function(h){ mtx[g][h]=0; }); });
+  pairs.forEach(function(x){ if(mtx[x.a.group]) mtx[x.a.group][x.b.group]++; });
+
+  var dDom={}; DOMAINS.forEach(function(d){ dDom[d.key]=curr.means[d.key]-prev.means[d.key]; });
+  dDom.will = curr.means.will-prev.means.will;
+
+  var dItem=[];
+  for(var i=1;i<=39;i++) dItem.push({no:i, text:ITEMS[i-1], prev:prev.fc(i), curr:curr.fc(i), d:curr.fc(i)-prev.fc(i)});
+
+  var up=[], down=[];
+  pairs.forEach(function(x){
+    var r=[], w=[];
+    var gr = GROUP_RANK[x.b.group]-GROUP_RANK[x.a.group];
+    var dh = x.b.s.harm-x.a.s.harm, dw = x.b.s.will-x.a.s.will, da = x.b.s.appr-x.a.s.appr;
+    if(gr>0) r.push(x.a.group+'→'+x.b.group);
+    if(dh<=-3) r.push('被侵害 '+dh);
+    if(dw>=4)  r.push('意欲 +'+dw);
+    if(da>=3)  r.push('承認 +'+da);
+    if(gr<0) w.push(x.a.group+'→'+x.b.group);
+    if(dh>=3) w.push('被侵害 +'+dh);
+    if(dw<=-4) w.push('意欲 '+dw);
+    if(da<=-3) w.push('承認 '+da);
+    x.gainText=r.join('／'); x.lossText=w.join('／'); x.gr=gr; x.dh=dh; x.dw=dw; x.da=da;
+    if(w.length) down.push(x); else if(r.length) up.push(x);
+  });
+  down.sort(function(x,y){ return (x.gr-y.gr) || (y.dh-x.dh) || (x.dw-y.dw); });
+  up.sort(function(x,y){ return (y.gr-x.gr) || (x.dh-y.dh) || (y.dw-x.dw); });
+
+  var stayUnsat = pairs.filter(function(x){ return x.a.group==='不満足群' && x.b.group==='不満足群'; });
+
+  return {pairs:pairs, onlyCurr:onlyCurr, onlyPrev:onlyPrev, mtx:mtx,
+          dDom:dDom, dItem:dItem, up:up, down:down, stayUnsat:stayUnsat,
+          prevSat:prev.satRate, currSat:curr.satRate,
+          prevUnsat:prev.unsatRate, currUnsat:curr.unsatRate};
+}
+
+var state = { pupils:[], analysis:null, norms:{}, cuts:{a:19,h:11}, skipped:[] };
+
+/* ══ ユーティリティ ══ */
+function $(s,r){ return (r||document).querySelector(s); }
+function $$(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function mean(a){ return a.length ? a.reduce(function(x,y){return x+y;},0)/a.length : 0; }
+function sd(a){ if(a.length<2) return 0; var m=mean(a); return Math.sqrt(mean(a.map(function(v){return (v-m)*(v-m);}))); }
+function r1(v){ return Math.round(v*10)/10; }
+function nos(list){ return list.map(function(p){ return p.no; }).join('・'); }
+
+/* ══ 1. 貼り付けデータの読み取り ══ */
+function toHalf(s){
+  return s.replace(/[０-９]/g,function(c){ return String.fromCharCode(c.charCodeAt(0)-0xFEE0); })
+          .replace(/[　]/g,' ');
+}
+function stripSubtotals(nums){
+  return nums.filter(function(_,i){ return SUBTOTAL_IDX.indexOf(i)<0; });
+}
+function resolveItems(nums){
+  // 39項目ぶんの 1〜4 の並びを、いくつかの解釈から特定する
+  var cands = [];
+  if(nums.length===39) cands.push({v:nums, no:null});
+  if(nums.length===40) cands.push({v:nums.slice(1), no:nums[0]});
+  if(nums.length===47) cands.push({v:stripSubtotals(nums), no:null});
+  if(nums.length===48) cands.push({v:stripSubtotals(nums.slice(1)), no:nums[0]});
+  for(var i=0;i<cands.length;i++){
+    var v=cands[i].v;
+    if(v.length===39 && v.every(function(x){ return x>=1 && x<=4; })) return cands[i];
+  }
+  return null;
+}
+function parse(text){
+  var lines = toHalf(text).split(/\r?\n/);
+  var pupils=[], skipped=[];
+  lines.forEach(function(line,li){
+    if(!line.trim()) return;
+    var cells = line.split(/\t|,|;|\s{2,}| +/).map(function(c){ return c.trim(); }).filter(function(c){ return c!==''; });
+    var nums = cells.filter(function(c){ return /^\d+$/.test(c); }).map(Number);
+    var res = resolveItems(nums);
+    if(!res){ skipped.push({line:li+1, why:'1〜4の数字が39個そろっていません（'+nums.length+'個の数字を検出）', text:line.slice(0,46)}); return; }
+    var glabel = null;
+    cells.forEach(function(c){
+      if(/不満足/.test(c)) glabel='不満足群';
+      else if(/非承認/.test(c)) glabel='非承認群';
+      else if(/侵害/.test(c)) glabel='侵害行為認知群';
+      else if(/満足/.test(c) && !glabel) glabel='満足群';
+    });
+    var name = cells.filter(function(c){
+      return !/^\d+$/.test(c) && !/満足|非承認|侵害/.test(c);
+    }).join(' ').slice(0,24);
+    pupils.push({ no: res.no!=null?res.no:(pupils.length+1), name:name, v:res.v, given:glabel });
+  });
+  return {pupils:pupils, skipped:skipped};
+}
+
+/* ══ 2. 得点化と4群判定 ══ */
+function scoreOne(p){
+  var s={};
+  DOMAINS.forEach(function(d){
+    var t=0; for(var i=d.from;i<=d.to;i++) t+=p.v[i-1];
+    s[d.key]=t;
+  });
+  s.will = s.friend + s.learn + s.mood;   // 学校生活意欲（36点満点）
+  s.skill = s.care + s.rel;               // 対人スキル計（64点満点）
+  p.s=s;
+  return p;
+}
+function classify(p,cuts){
+  if(p.given) { p.group=p.given; p.est=false; return; }
+  var ok = p.s.appr >= cuts.a, safe = p.s.harm <= cuts.h;
+  p.group = ok ? (safe?'満足群':'侵害行為認知群') : (safe?'非承認群':'不満足群');
+  p.est = true;
+}
+function isFlag(itemNo, val){
+  return (itemNo>=REV_FROM && itemNo<=REV_TO) ? val>=3 : val<=2;
+}
+
+/* ══ 3. 学級全体の分析 ══ */
+function analyze(pupils, norms, cuts){
+  pupils.forEach(scoreOne);
+  pupils.forEach(function(p){ classify(p,cuts); });
+  var n = pupils.length;
+
+  var groups={}; GROUP_ORDER.forEach(function(g){ groups[g]=[]; });
+  pupils.forEach(function(p){ (groups[p.group]||(groups[p.group]=[])).push(p); });
+
+  var means={}, sds={};
+  DOMAINS.forEach(function(d){
+    var a=pupils.map(function(p){ return p.s[d.key]; });
+    means[d.key]=mean(a); sds[d.key]=sd(a);
+  });
+  means.will = mean(pupils.map(function(p){return p.s.will;}));
+  means.skill = mean(pupils.map(function(p){return p.s.skill;}));
+  sds.rel = sd(pupils.map(function(p){return p.s.rel;}));
+  sds.care = sd(pupils.map(function(p){return p.s.care;}));
+
+  var flags=[];
+  for(var i=1;i<=39;i++){
+    var hit = pupils.filter(function(p){ return isFlag(i, p.v[i-1]); });
+    flags.push({no:i, text:ITEMS[i-1], count:hit.length, pupils:hit,
+                domain: DOMAINS.filter(function(d){ return i>=d.from && i<=d.to; })[0]});
+  }
+
+  var satRate = groups['満足群'].length/n;
+  var unsatRate = groups['不満足群'].length/n;
+  var stage, stageWhy;
+  if(satRate>=0.7 && unsatRate<=0.08){ stage='全体集団成立期 〜 自治的集団'; stageWhy='満足群が7割を超え、不満足群がごく少数。学級全体で課題解決ができる段階です。'; }
+  else if(satRate>=0.55 && unsatRate<=0.22){ stage='中集団形成期（後半）'; stageWhy='中核となる集団は育っていますが、その外側に届いていません。自治的集団まであと2段階です。'; }
+  else if(satRate>=0.40){ stage='小集団形成期'; stageWhy='仲のよい少人数のまとまりはできていますが、学級全体としてはまだ動きません。'; }
+  else { stage='混沌・緊張期 〜 小集団形成期'; stageWhy='学級全体で共有されたルールと関係が、まだ十分に育っていません。'; }
+
+  var a = { pupils:pupils, n:n, groups:groups, means:means, sds:sds, flags:flags,
+            norms:norms, cuts:cuts, satRate:satRate, unsatRate:unsatRate,
+            stage:stage, stageWhy:stageWhy,
+            anyEstimated: pupils.some(function(p){ return p.est; }) };
+  a.flag = function(i){ return a.flags[i-1]; };
+  a.fc = function(i){ return a.flags[i-1].count; };
+  a.fp = function(i){ return a.flags[i-1].pupils; };
+  a.concerns = detectConcerns(a);
+  return a;
+}
+
+/* ══ 4. 個別の所見 ══ */
+function detectConcerns(a){
+  var out=[];
+  a.pupils.forEach(function(p){
+    var f=[], lv=0;
+    var fours=0; for(var i=16;i<=21;i++) if(p.v[i-1]===4) fours++;
+    if(fours>=2){ f.push({lv:3, t:'被侵害の項目に最高値が'+fours+'つ。いじめの重大事態を疑う水準です。学級経営の工夫ではなく、校内のいじめ対策組織で扱う案件です。'}); }
+    if(p.v[21]>=3 || p.v[22]>=3){ f.push({lv:3, t:'ネットいじめの項目が高値。端末・アプリの特定と記録の保全、保護者連絡が要ります。'}); }
+    if(p.v[16]>=4){ f.push({lv:3, t:'「暴力を受けて辛い」が最高値。行為の事実確認を最優先で。'}); }
+    else if(p.v[16]===3){ f.push({lv:2, t:'「暴力を受けて辛い」に該当。じゃれ合いとの境目を本人がどう感じているか確認を。'}); }
+    if(p.s.will<=18){ f.push({lv:3, t:'学校生活意欲が'+p.s.will+'／36点。不登校の一次予防として、出欠・遅刻・保健室利用と学習の到達度を早急に確認してください。'}); }
+    else if(p.s.will<=24){ f.push({lv:2, t:'学校生活意欲が'+p.s.will+'／36点と低め。どの領域が下がっているかを見てください。'}); }
+    if(p.v[17]>=3){ f.push({lv:2, t:'「ばかにされて教室にいたくない」に該当。教室内の居場所が失われかけています。'}); }
+    if(p.v[15]>=3 && p.v[16]<3){ f.push({lv:1, t:'「嫌なことをされて辛い」に該当。何をされたのかを行為ベースで聞き取ってください。'}); }
+    if(p.v[18]>=3 || p.v[19]>=3){ f.push({lv:1, t:'休み時間の孤立、またはグループづくりで最後まで残る状態。班・ペアの決め方を変えれば今週から動かせます。'}); }
+    if(p.s.appr < a.cuts.a && p.s.skill >= a.means.skill){
+      f.push({lv:2, t:'対人スキルは学級平均以上（'+p.s.skill+'／64点）なのに承認得点は'+p.s.appr+'点。貢献しているのに認められていない状態です。'});
+    }
+    if(p.s.rel<=20){ f.push({lv:1, t:'関わりのスキルが'+p.s.rel+'／32点。自分から誘う・意見を言う場面で支えが要ります。自治的な活動では役割を先に指定してください。'}); }
+    if(p.s.mood<=7){ f.push({lv:2, t:'学級の雰囲気の受け止めが'+p.s.mood+'／12点。同じ教室を、他の子とかなり違う場所として体験しています。'}); }
+    if(f.length){
+      f.forEach(function(x){ lv=Math.max(lv,x.lv); });
+      out.push({p:p, lv:lv, findings:f.sort(function(x,y){ return y.lv-x.lv; })});
+    }
+  });
+  out.sort(function(x,y){ return (y.lv-x.lv) || (y.p.s.harm-x.p.s.harm) || (x.p.s.will-y.p.s.will); });
+  return out;
+}
+
+/* ══ 5. 実行策の組み立て ══ */
+var PHASES = [
+ {id:0, name:'安全を確保する', when:'今日〜今週'},
+ {id:1, name:'土台を直す',     when:'1〜3週目'},
+ {id:2, name:'承認を配り直す', when:'4〜10週目'},
+ {id:3, name:'主導権を渡す',   when:'11週目以降'}
+];
+
+var ACTIONS = [
+{ph:0, id:'a01', t:'校内のいじめ対策組織に今日中に上げる',
+ when:function(a){ return a.concerns.some(function(c){ return c.lv===3; }); },
+ target:function(a){ return a.concerns.filter(function(c){ return c.lv===3; }).map(function(c){ return c.p; }); },
+ why:'被侵害・ネットいじめ・意欲の項目に、担任個人の工夫の範囲を超える水準の回答があります。',
+ steps:[
+  '管理職・生徒指導主任・養護教諭に、氏名ではなく出席番号で状況を共有し、記録を残す。',
+  '本人への聞き取りでは「アンケートを見た」と言わない。回答が調査由来だと分かると次回のアンケートが機能しなくなる。「最近、休み時間はどんな感じ？」から入る。',
+  '「誰にやられたの」ではなく「どんなことがあったの」と行為から聞く。加害者を先に特定しようとすると口が重くなる。',
+  '友達関係の得点が高い児童ほど、友達だと思っている相手からの行為を被害と認めにくい。得点が高いことを「大丈夫」の根拠にしない。',
+  'SNSが絡む場合は、その日のうちに端末・アプリの特定、画面の保存、保護者連絡まで進める。'
+ ]},
+
+{ph:0, id:'a02', t:'不登校の一次予防として学習と生活を確認する',
+ when:function(a){ return a.pupils.some(function(p){ return p.s.will<=18; }); },
+ target:function(a){ return a.pupils.filter(function(p){ return p.s.will<=18; }); },
+ why:'学校生活意欲が極端に低い児童がいます。意欲ゼロは反抗ではなく消耗のサインです。',
+ steps:[
+  '出欠・遅刻・早退・保健室利用の履歴を、直近3か月ぶんさかのぼって並べる。',
+  '学習意欲の3項目がすべて低い場合は、内容が分からない可能性が高い。前学年の основ範囲の到達度を個別に確認する。',
+  '面談は「どうしたの」ではなく「1日のうちで、いちばんましな時間はいつ？」と聞く。残っている足場を探す。',
+  '家庭と共有するときは、学級の課題として伝える。本人の性格の問題として伝えない。'
+ ]},
+
+{ph:0, id:'a03', t:'「ふざけ」と「暴力」の線引きを子どもと決める',
+ when:function(a){ return a.fc(17)>=2; },
+ target:function(a){ return a.fp(17); },
+ why:'「暴力を受けて辛い」に複数名が該当しています。満足群の児童が含まれる場合、標的型のいじめではなく、じゃれ合いの延長として学級全体で起きている可能性が高い。',
+ steps:[
+  '学級活動1時間。カードを分類する形で行う。教師は答えを言わない。',
+  'カード例：肩をたたく／背中を強く押す／首に腕を回す／「バカ」と言う／あだ名で呼ぶ／持ち物を隠す／ボールを顔に当てる／消しゴムを投げる。',
+  '班でセーフ・アウト・微妙の3つに分ける。全体では意見が割れたカードだけを話し合う。',
+  '着地点は「やった側がセーフでも、やられた側がアウトと言ったらアウト」。この一文を模造紙に書いて掲示する。',
+  '以後の指導は、叱るのではなく掲示を指さすだけにする。基準の共有は、気持ちの想像より先に効く。'
+ ]},
+
+{ph:0, id:'a04', t:'不満足群にとどまった児童を、名簿の一番上に置く',
+ when:function(a){ return a.cmp && a.cmp.stayUnsat.length>0; },
+ target:function(a){ return a.cmp.stayUnsat.map(function(x){ return x.b; }); },
+ why:'前回も今回も不満足群だった児童です。学級全体の数字が良くなっていても、この児童にとっては半年間なにも変わらなかったということです。学級経営の一般施策では届いていません。',
+ steps:[
+  '「学級がよくなれば、この子もよくなる」という前提を一度捨てる。半年それで動かなかったという事実がデータに出ています。',
+  '前回と今回の39項目を並べ、点数が下がった項目だけを抜き出す。何が悪化したかではなく、どこが動かなかったかを見る。',
+  '本人・保護者・前担任のうち、まだ話を聞いていない相手を1人決めて今週中に聞く。',
+  '個別の目標を1つだけ立てる。「学級に馴染む」ではなく「休み時間に行く場所が1つある」のような、来週確認できる粒度にする。',
+  '校内の教育相談担当・特別支援コーディネーターと共有し、担任1人で抱える体制から外す。'
+ ]},
+
+{ph:0, id:'a05', t:'前回から悪化した児童に、心当たりを突き合わせる',
+ when:function(a){ return a.cmp && a.cmp.down.length>0; },
+ target:function(a){ return a.cmp.down.map(function(x){ return x.b; }); },
+ why:'群が下がった、あるいは被侵害・意欲・承認が大きく動いた児童です。半年のあいだに何かが起きています。データは起きたことを教えてくれますが、いつ起きたかは教えてくれません。',
+ steps:[
+  'この児童について、前回の調査以降に変わったことを書き出す。席替え、班替え、クラブや委員会、行事の係、家庭の状況。',
+  '複数名が同じ時期に悪化していれば、原因は個人ではなく学級の出来事です。行事の後、席替えの後といった区切りを疑う。',
+  '被侵害が上がった児童は、上がった項目を特定してから聞き取る。「何かあった？」では出てきません。「休み時間、前より一人でいることが増えた？」のように項目の言葉で聞く。',
+  '悪化が1名だけなら個別の事情、3名以上なら学級の構造。分岐点はここです。'
+ ]},
+
+{ph:2, id:'a25', t:'効いた手を残し、効かなかった手を止める',
+ when:function(a){ return !!a.cmp; },
+ why:'2回分のデータがあるので、施策の効果を項目単位で確認できます。続けるものと畳むものを決めないと、来学期の担任の手が足りなくなります。',
+ steps:[
+  '該当人数が2名以上減った項目を挙げ、その時期に何をしていたかを書き添える。これが来年度に引き継ぐ資産です。',
+  '該当人数が変わらなかった項目については、施策が弱かったのか、そもそも打っていなかったのかを分ける。打っていなかったなら、それは失敗ではありません。',
+  '増えた項目は、施策の副作用を疑う。たとえば班をくじで固定すると孤立は減りますが、関わりのスキルが高い児童の意欲が下がることがあります。',
+  '学年会か研究部会で、項目番号を使って共有する。「雰囲気がよくなった」ではなく「項目16が10名から4名に減った」と言うと、他学級でも再現できます。'
+ ]},
+
+{ph:1, id:'a11', t:'班・ペアの決め方を今週から変える',
+ when:function(a){ return a.fc(20)>=2 || a.fc(19)>=3; },
+ target:function(a){ return a.fp(20).concat(a.fp(19).filter(function(p){ return a.fp(20).indexOf(p)<0; })); },
+ why:'「グループづくりで最後まで残る」「休み時間に一人ぼっち」に該当があります。ここは方式を変えるだけで来週から数字が動く場所です。',
+ steps:[
+  '今学期は「好きな人同士」を0回にする。説明は最初に1回だけ「全員と組めるクラスを目指すから、今年はくじで作る」。毎回言い訳しない。',
+  'くじの前に、教師が①同じ班にしない組み合わせ ②必ず入れる支え役、を決めておく。',
+  '体育のペアづくりで「余った人が手を挙げる」方式をやめ、事前にペア表を印刷して配る。',
+  '該当児童の班には、対人スキルの高い児童を必ず1名配置する（次の項目に候補を出しています）。'
+ ]},
+
+{ph:1, id:'a12', t:'支え役を割り当てる',
+ when:function(a){ return a.concerns.length>0; },
+ target:function(a){
+   return a.pupils.filter(function(p){ return p.s.skill>=60 && p.s.harm<=a.cuts.h; })
+                  .sort(function(x,y){ return y.s.skill-x.s.skill; }).slice(0,6);
+ },
+ targetLabel:'支え役の候補',
+ why:'配慮のスキルと関わりのスキルがともに高く、被侵害の訴えがない児童です。班編成や活動のペアで意図的に配置します。',
+ steps:[
+  '要対応の児童と同じ班に、この中から必ず1名を入れる。',
+  '「◯◯さんを助けてあげて」とは頼まない。役割で頼む（記録係を一緒に、など）。頼まれた側の負担にしない。',
+  '支え役に回した児童こそ、承認が届きにくい。次の「ナイストライ」で名前が挙がっているか記録で確認する。'
+ ]},
+
+{ph:1, id:'a13', t:'休み時間の実態を2週間記録する',
+ when:function(a){ return a.fc(16)/a.n>=0.18 || a.fc(19)>=3; },
+ target:function(a){ return a.fp(19); },
+ why:'アンケートは自己報告です。実態と一致するかを、指導のためではなく事実特定のために確かめます。',
+ steps:[
+  'ノート1ページで足ります。中休みと昼休みに「誰が・どこで・誰と」を名前だけメモする。',
+  '重点は「休み時間に一人ぼっち」に該当した児童の動線。教室に残っているのか、外にいるのか、誰といるのか。',
+  '2週間分をならべると、アンケートに出なかった組み合わせが見えます。ここで初めて班編成の調整が精度を持ちます。'
+ ]},
+
+{ph:2, id:'a21', t:'帰りの会を「ナイストライ」に変える',
+ when:function(a){ return a.fc(11)>=2; },
+ target:function(a){ return a.fp(11); },
+ why:'「失敗したときに励ましてくれる」に該当があります。承認が成功にしか配られていない状態です。',
+ steps:[
+  '「今日のよかったこと」をやめ、うまくいかなかったけれどやってみたことだけを言う会にする。成功談は禁止。',
+  '最初の3日は教師が自分の失敗を1つ言って型を見せる。「先生、今日の準備を間違えた。でも気づいて教えてくれた人がいた」。',
+  'ここからが本題。誰が誰の名前を挙げたかを、教師が正の字で数える。',
+  '3週間で一度も名前が挙がらない児童を特定する。承認の配分の偏りが、ここで初めて目に見えます。',
+  '挙がらなかった児童を、次の活動で意図的に中心に置く。'
+ ]},
+
+{ph:2, id:'a22', t:'係を当番から切り離す',
+ when:function(a){ return a.fc(10)>=2 || a.fc(38)>=2; },
+ target:function(a){ return a.fp(38); },
+ why:'「クラスの人に認められている」「係の仕事で意見を言っている」に該当があります。係が当番になっていると、承認も自治も生まれません。',
+ steps:[
+  '自治的な学級の係は「なくても困らないが、あると学級がよくなる」もの。黒板消し・配り当番になっていないか点検する。',
+  '人数ぶんの役をつくる。名前は「◯◯係」でなく「◯◯会社」でもよい。',
+  '月1回15分の「係の相談タイム」を時間割に入れる。係ごとに集まって「今月どうする？」を決める。',
+  '教師は口を出さず、1分ずつ回って「何決まった？」とだけ聞く。',
+  '「係で意見を言っている」が低い児童は、係内の役割を記録係ではなく提案係に固定する。意見を言うことを仕事にしてしまう。'
+ ]},
+
+{ph:2, id:'a23', t:'貢献しているのに認められていない児童に手当てする',
+ when:function(a){ return a.pupils.some(function(p){ return p.s.appr<a.cuts.a && p.s.skill>=a.means.skill; }); },
+ target:function(a){ return a.pupils.filter(function(p){ return p.s.appr<a.cuts.a && p.s.skill>=a.means.skill; }); },
+ why:'対人スキルは学級平均以上なのに承認得点が低い児童です。「できるから任される、でもほめられない」型で、いちばん静かに離れていきます。',
+ steps:[
+  'ペア学習・班活動のあとに「今日、誰に助けてもらった？」を毎回、全体で言わせる。',
+  '助けた側からではなく、助けられた側から言わせるのが肝心。助けた側の自己申告にすると、この層は手を挙げません。',
+  '授業中の指名を「正解を言う場面」から「考えの途中を言う場面」に変える。「まだ途中でいいから、今どこまで考えた？」',
+  '通知表・面談でも、成果ではなく「学級に配っているもの」を具体的な場面で言葉にする。'
+ ]},
+
+{ph:2, id:'a24', t:'「わからない」に価値をつける',
+ when:function(a){ return a.fc(5)>=2 || a.fc(15)>=2; },
+ target:function(a){ return a.fp(5).concat(a.fp(15).filter(function(p){ return a.fp(5).indexOf(p)<0; })); },
+ why:'「授業で意見を言うのは好き」「発表したとき冷やかさず聞いてくれる」に該当があります。発言の安全が確保されていないと、自治的な話し合いは中核層だけのものになります。',
+ steps:[
+  '「わからない」と言った児童に、教師が必ず「今の『わからない』が一番助かった。同じところで止まっている人？」と返して挙手させる。',
+  '毎時間1回、意図的にやる。2週間続けると発言者の顔ぶれが変わります。',
+  '冷やかしが出た瞬間の対応を先に決めておく。叱らず「今の反応、もう一回見せて」と言う。笑いが止まります。',
+  '発言の記録を座席表につける。3日間で一度も発言していない児童を、翌日に指名する。'
+ ]},
+
+{ph:3, id:'a31', t:'クラス会議を週1回入れる',
+ when:function(a){ return true; },
+ why:'自治は、安全が確保されてからしか成立しません。フェーズ0〜2が動き出してから始めてください。先に決定権を渡すと、すでに力を持っている中核層がさらに強くなり、周辺との差が開きます。',
+ steps:[
+  '型を固定する。①輪になる（机を下げる／2分）②隣の人のよいところを1つ言う（3分）③議題（15分）④決まったことの確認（2分）。',
+  '議題箱を置く。投稿は「◯◯が嫌だ」ではなく「◯◯したい／◯◯をよくしたい」の形で書くルールにする。',
+  '最初の3回は教師が司会。4回目から子どもに渡す。',
+  '司会は関わりのスキルが低い児童から順に回す。ただし副司会に中核層を必ずつける。',
+  '教師の発言は「今、何人が話した？」だけにする。話し合いの中身には入らない。'
+ ]},
+
+{ph:3, id:'a32', t:'「誘う」「断る」を技術として教える',
+ when:function(a){ return a.fc(37)>=2 || a.fc(39)>=2; },
+ target:function(a){ return a.fp(37); },
+ why:'「自分から友達を遊びに誘っている」に該当があります。誘えない理由の多くは、性格ではなく断られたときの手順を知らないことです。',
+ steps:[
+  '掲示物にセリフを4つ書いて配る。誘う「いっしょにやろう」／入る「入っていい？」／断られたとき「じゃあ、あとでね」／断る側「今は2人でやりたいから、次ね」。',
+  '断り方をセットで教えるのが肝心。断る言葉が共有されると、誘うコストが下がります。',
+  '休み時間に使えたら帰りの会で報告する。使った側でなく、言われた側から報告させる。',
+  '教師も同じセリフを使う。大人が使わない言葉は定着しません。'
+ ]},
+
+{ph:3, id:'a33', t:'役割の順番を、関わりのスキルが低い側から回す',
+ when:function(a){ return a.sds.rel>=3.5; },
+ target:function(a){ return a.pupils.filter(function(p){ return p.s.rel<=a.means.rel-a.sds.rel; })
+                                   .sort(function(x,y){ return x.s.rel-y.s.rel; }); },
+ why:'関わりのスキルのばらつきが大きい学級です。挙手や立候補で決めると、同じ児童が繰り返し前に出て、差が固定されます。',
+ steps:[
+  '司会・記録・発表・代表を、名簿順ではなくこの一覧の順に割り当てる。',
+  '初回は必ず補助をつける。台本を渡してよい。自治は「うまくやること」ではなく「順番が回ってくること」から始まります。',
+  '一巡したら、次は本人に選ばせる。'
+ ]}
+];
+
+/* ══ 5b. エクササイズの処方 ─────────────────
+   stage … 実施できる最低の発達段階（1:混沌 2:小集団 3:中集団 4:全体集団）
+   open  … 自己開示の深さ（0:なし 1:浅い 2:中 3:深い）
+   被侵害得点が高い学級で深い自己開示を求めると、傷つき体験がその場で再現されます。
+   段階と開示レベルの二重の門で、合わないものは最初から出しません。 ── */
+var EXERCISES = [
+{id:'x1', type:'協同課題', name:'ペーパータワー', min:20, stage:1, open:0, targets:[8,9,13,14,38,39],
+ aim:'言葉ではなく作業で協力を経験する。自己開示がゼロなので、関係が壊れている学級でも安全に入れます。',
+ steps:[
+  '4人班。新聞紙1日分とセロテープだけを渡す。制限時間8分でできるだけ高い塔を作る。',
+  '作戦タイム2分を先に取る。この2分で誰が何を言ったかを、教師が座席表にメモする。',
+  '1回目のあと、他の班を1分だけ見学に行かせる。そのうえで2回目を6分。',
+  '記録は「高さ」だけを掲示する。勝敗は言わない。'],
+ share:['1回目より2回目がうまくいったのは、誰が何を言ったからですか',
+        '自分の班で、いちばん助かった一言はどれでしたか'],
+ caution:'高さを競わせすぎると、関わりのスキルが高い児童だけが仕切ります。作戦タイムの発言を教師が拾い、シェアリングで名前を出してください。'},
+
+{id:'x2', type:'協同課題', name:'言葉なしバースデーライン', min:10, stage:1, open:0, targets:[19,20,32,35],
+ aim:'グループづくりで「余る」構造そのものを消す。班分けの手段としても使えます。',
+ steps:[
+  '一切しゃべらずに、誕生日順に一列に並ぶ。指と身振りだけ。',
+  '並び終わったら端から4人ずつ切って、その日の班にする。',
+  '慣れたら「名前の五十音順」「家から学校までの距離」など条件を変える。'],
+ share:['言葉が使えないとき、どうやって伝えましたか',
+        'いつもと違う人と同じ班になって、気づいたことはありますか'],
+ caution:'「グループをつくるとき最後まで残る」に該当がある学級では、自由に班を作らせる方式を今学期はやめてください。この方法なら、余る人が構造上いなくなります。'},
+
+{id:'x3', type:'SGE', name:'アドジャン', min:5, stage:1, open:1, targets:[1,2,3,7,12,32],
+ aim:'毎日5分で、話す相手を強制的に入れ替える。関係づくりの土台。',
+ steps:[
+  '4人組。「アドジャン」の合図で全員が0〜5本の指を出す。',
+  '合計の数の話題について、一人ずつ短く話す（例：0＝好きな給食／1＝最近うれしかったこと）。',
+  '話題カードは教師が作り、深い内容を入れない。1周したら終わり。',
+  '朝の会に組み込んで、班替えのたびにやる。'],
+ share:['初めて聞いた話はありましたか（挙手だけでよい）'],
+ caution:'話題に「家族」「将来の夢」を入れないでください。家庭状況に事情のある児童が答えられなくなります。'},
+
+{id:'x4', type:'SGE', name:'二者択一', min:10, stage:1, open:1, targets:[5,15,32,36],
+ aim:'意見を言う練習を、いちばん低いリスクで行う。授業での発言につながります。',
+ steps:[
+  '教室の左右に「A」「B」を貼る。「きのこ派か、たけのこ派か」など、正解のない二択を出す。',
+  '全員が移動する。人数の少ない側から順に、3人だけ理由を言う。',
+  '「どちらでもない」は真ん中に立ってよいと最初に言う。',
+  '5問やる。だんだん学級のことに寄せる（例：席替えはくじがよいか、先生が決めるのがよいか）。'],
+ share:['自分と違う意見の理由を聞いて、なるほどと思ったものはありましたか'],
+ caution:'多数派の側から先に言わせると、少数派が動けなくなります。必ず少ない側から。'},
+
+{id:'x5', type:'SGE', name:'共通点さがし', min:15, stage:2, open:1, targets:[1,2,3,12],
+ aim:'「この人はいい人だな」と思える相手を増やす。友達関係の得点に直接効きます。',
+ steps:[
+  'ペアで3分。二人の共通点をできるだけ多く見つけて紙に書く。見た目のこと以外。',
+  '相手を替えて3回。教師が組み合わせを指定する。ふだん話さない相手を必ず入れる。',
+  '最後に「今日見つけた共通点でいちばん意外だったもの」を全体で3人だけ発表。'],
+ share:['話す前と後で、その人の印象は変わりましたか'],
+ caution:'ペアを自由に選ばせないでください。選ばせた瞬間に、いつもの関係がなぞられます。'},
+
+{id:'x6', type:'SGE', name:'いいとこ四面鏡', min:25, stage:3, open:2, targets:[10,11,12,15,29],
+ aim:'承認をやりとりする経験そのもの。承認得点が低い児童に、実物として届けます。',
+ steps:[
+  '4人班。一人ずつ「主役」になり、他の3人が主役のよいところをカードに書く（1分）。',
+  '書いたカードを声に出して読んでから、主役に渡す。',
+  '主役は「ありがとう」だけ言う。否定してはいけないことを先に約束する。',
+  '4周して全員が主役をやる。もらったカードはノートに貼る。'],
+ share:['もらったカードで、自分では気づいていなかったものはどれですか',
+        '書くとき、いちばん迷ったのはどんなところでしたか'],
+ caution:'書く相手を自由に選ばせると、もともと承認が集まっている児童に集中して差が広がります。班の中で全員が全員に書く形にしてください。「よいところが思いつかない」と言う児童が出るので、事前に観点（やさしさ・がんばり・とくい・おもしろさ）を4つ掲示しておきます。'},
+
+{id:'x7', type:'SGE', name:'トラストウォーク', min:20, stage:3, open:2, targets:[11,12,13,24,31],
+ aim:'言葉で守られる経験。「協力・応援してくれると思う」の得点に効きます。',
+ steps:[
+  'ペア。一人が目を閉じ、もう一人が声だけで教室内を案内する（体には触れない）。3分で交代。',
+  '教師は障害物を置きすぎない。安全がすべてです。',
+  '交代後、「どんな言い方だと安心できたか」をペアで1分話す。'],
+ share:['どんな声のかけ方だと安心できましたか。具体的な言葉で言ってください',
+        '案内する側になって、難しかったことは何ですか'],
+ caution:'被侵害得点が高い児童を、加害の可能性がある児童と組ませないでください。組み合わせは必ず教師が決めます。'},
+
+{id:'x8', type:'協同課題', name:'コンセンサス（無人島の持ち物）', min:30, stage:3, open:1, targets:[9,13,14,38,39,36],
+ aim:'多数決ではなく話し合いで結論を出す練習。学級会に移行する直前に置きます。',
+ steps:[
+  '「無人島に持っていく5つ」を、まず一人で考えて順位をつける（5分）。',
+  '班で1つの答えにまとめる。多数決とじゃんけんは禁止と先に言う。',
+  '15分で結論。出ない班はそのまま報告してよい。',
+  '全体で各班の1位と、その理由だけを発表。'],
+ share:['自分の意見が変わった人はいますか。何を聞いて変わりましたか',
+        '意見が割れたとき、班はどうやって進めましたか'],
+ caution:'「まとまらなかった」ことを失敗として扱わないでください。自治の第一歩は、結論より過程を言葉にできることです。'},
+
+{id:'x9', type:'SGE', name:'別れの花束', min:30, stage:4, open:3, targets:[10,11,12,13],
+ aim:'学期末・学年末に、一年分の承認をまとめて渡す。',
+ steps:['全員が全員に一言ずつ書く。台紙にまとめて渡す。'],
+ share:['一年前の自分に、今日もらった言葉を見せたらどう思うでしょうか'],
+ caution:'学級が全体集団として成立していない段階でやると、空欄や形だけの言葉が出て、かえって傷つきます。承認得点が低い児童がいるうちは実施しないでください。'},
+
+{id:'y1', type:'SST', name:'あたたかい言葉かけ（失敗した友達に）', min:15, stage:1, open:0, targets:[11,28,29,24],
+ skill:'友達が失敗したときに声をかける',
+ aim:'「失敗したときに励ましてくれる」の得点に直接対応します。承認が成功にしか配られていない学級の急所です。',
+ steps:[
+  '【教示】「失敗したときにかけてもらってうれしかった言葉」を全体で3つ集め、板書する。',
+  '【モデル】教師が2回演じる。1回目は無視して通り過ぎる。2回目は「ドンマイ、次いこ」と言う。「どっちのクラスにいたい？」と聞く。',
+  '【練習】3人組。失敗役・声かけ役・見る役。給食をこぼした／リレーで転んだ／発表で詰まった、の3場面を交代でやる。',
+  '【返し】見る役が「よかった言葉」を1つだけ言う。直すところは言わせない。',
+  '【定着】集めた言葉を教室に掲示し、使えた場面を帰りの会で報告する。報告するのは言った側ではなく、言われた側。'],
+ caution:'「がんばれ」は失敗直後には効きにくいので、板書のときに「がんばれ以外」で集めてください。'},
+
+{id:'y2', type:'SST', name:'仲間への入り方・誘い方と、断り方', min:15, stage:1, open:0, targets:[19,20,37,39],
+ skill:'遊びに誘う・仲間に入る・断る',
+ aim:'誘えない理由の多くは性格ではなく、断られたときの手順を知らないことです。断り方をセットで教えると、誘うコストが下がります。',
+ steps:[
+  '【教示】4つのセリフを配る。誘う「いっしょにやろう」／入る「入っていい？」／断られたとき「じゃあ、あとでね」／断る側「今は2人でやりたいから、次ね」。',
+  '【モデル】教師どうし、または教師と代表児童で演じる。断られる場面を必ず入れる。',
+  '【練習】3人組。誘う・断る・見る。全員が断る役を経験する。',
+  '【返し】「断られたあと、どんな気持ちだった？」を全員に聞く。断ることが悪ではないと確認する。',
+  '【定着】4つのセリフを掲示。休み時間に使えたら帰りの会で報告。報告は言われた側から。'],
+ caution:'断る役をやらせないと、断られる恐怖が消えません。ここを省略すると効果が出ないので、時間が足りない場合は誘う練習を削って断る練習を残してください。'},
+
+{id:'y3', type:'SST', name:'あたたかい言葉とチクチク言葉', min:15, stage:1, open:0, targets:[15,16,18,21],
+ skill:'言葉の線引きを学級で共有する',
+ aim:'「嫌なことをされて辛い」「ばかにされて教室にいたくない」に対応します。気持ちの想像より先に、基準の共有が効きます。',
+ steps:[
+  '【教示】言葉カードを20枚用意する。「ドンマイ」「うざい」「すごいね」「またお前か」「べつに」「ありがとう」など。',
+  '【分類】班でセーフ・アウト・微妙の3つに分ける。全体では、意見が割れたカードだけを話し合う。',
+  '【基準】着地点は「言った側がセーフでも、言われた側がアウトと言ったらアウト」。この一文を模造紙に書く。',
+  '【練習】微妙に分類された言葉を、言い方を変えて言い直す練習をする。',
+  '【定着】以後の指導は、叱らずに掲示を指さすだけにする。'],
+ caution:'教師が最初に正解を言わないでください。子どもが分類することに意味があります。割れたカードこそが、その学級の実際の争点です。'},
+
+{id:'y4', type:'SST', name:'怒りの温度計', min:20, stage:1, open:1, targets:[16,17,18],
+ skill:'手が出る前に止める',
+ aim:'「暴力を受けて辛い」に複数名が該当する学級向け。加害側を叱る指導と並行して、全員に手順を渡します。',
+ steps:[
+  '【教示】怒りを0〜10で表す温度計を配る。「10になると手が出る」ことを確認する。',
+  '【自己観察】最近の出来事を1つ書き、そのときの数字を書く。共有はしない。',
+  '【方法】5を超えたときにやることを3つ決める（その場を離れる／数を数える／先生のところに行く）。学級で共通のものにする。',
+  '【練習】ロールプレイ。「わざとぶつかられた」場面で、離れる練習を実際にやる。',
+  '【定着】温度計を机に貼る。教師は「今いくつ？」とだけ聞く。'],
+ caution:'書いた内容を発表させないでください。ここは自己開示の場ではありません。集める場合も回収しないほうが安全です。'},
+
+{id:'y5', type:'SST', name:'「わからない」の言い方と受け止め方', min:15, stage:1, open:0, targets:[5,15],
+ skill:'授業中に「わからない」と言う／それを受け止める',
+ aim:'発言の安全が確保されていないと、学級会も中核層だけのものになります。自治の前提条件です。',
+ steps:[
+  '【教示】「わからない」には3種類あると教える。①どこがわからないかわからない ②途中まではわかる ③言葉の意味がわからない。',
+  '【モデル】教師が「先生も、ここが今わからない」と実際に言う。大人が使わない言葉は定着しません。',
+  '【練習】ペアで、算数の問題を1問使って「①〜③のどれか」を言う練習をする。',
+  '【受け止め】聞いた側は「そこ、自分もかも」か「どこまでわかった？」のどちらかを返す。この2つだけ。',
+  '【定着】以後、授業中に「わからない」が出たら、教師が必ず「今のが一番助かった。同じところで止まってる人？」と返して挙手させる。毎時間1回。'],
+ caution:'冷やかしが出た瞬間の対応を先に決めておいてください。叱らずに「今の反応、もう一回見せて」と言うと笑いが止まります。'},
+
+{id:'y6', type:'SST', name:'係活動での意見の言い方・頼み方', min:15, stage:2, open:0, targets:[31,38,39,33],
+ skill:'集団の中で提案する・人に頼む',
+ aim:'自治的な学級は「言い出せる子」の人数で決まります。係の相談タイムの前に置いてください。',
+ steps:[
+  '【教示】提案の型を3つ渡す。「〜したらどうかな」「〜で困ってるから、〜してほしい」「〜と〜、どっちがいい？」。',
+  '【モデル】うまくいかない例を先に見せる。黙っている／全部自分で決める／「なんでもいい」と言う、の3つ。',
+  '【練習】実際の係の課題で試す。架空の場面にしないこと。',
+  '【返し】班の中で「いちばん動きやすかった言い方」を1つ選ぶ。',
+  '【定着】月1回15分の係の相談タイムを時間割に入れる。教師は1分ずつ回って「何決まった？」とだけ聞く。'],
+ caution:'意見を言うのが苦手な児童は、係の中の役割を記録係ではなく提案係に固定してください。意見を言うことを仕事にしてしまうのがいちばん早い。'}
+];
+
+function stageLevel(a){
+  if(/自治的/.test(a.stage)) return 4;
+  if(/中集団/.test(a.stage)) return 3;
+  if(/小集団形成期$/.test(a.stage)) return 2;
+  return 1;
+}
+function prescribe(a){
+  var lv = stageLevel(a);
+  var unsat = (a.groups['不満足群']||[]).length;
+  var mixed = unsat + (a.groups['侵害行為認知群']||[]).length;
+  var reasons = [];
+  if(a.means.harm > a.norms.harm) reasons.push('被侵害得点の学級平均が全国平均を上回っています');
+  if(unsat/a.n >= 0.25) reasons.push('不満足群が全体の4分の1を超えています');
+  if(lv <= 2) reasons.push('学級集団の段階がまだ小集団形成期以前です');
+  var hard = reasons.length>0;
+  var soft = !hard && (mixed/a.n >= 0.25);
+  if(soft) reasons.push('侵害行為認知群と不満足群の合計が全体の4分の1を超えています');
+
+  var maxOpen = hard ? 1 : (soft ? 2 : (lv>=4 ? 3 : 2));
+
+  var scored = EXERCISES.map(function(x){
+    var s=0, hit=[];
+    x.targets.forEach(function(i){ if(a.fc(i)>0){ s+=a.fc(i); hit.push(i); } });
+    return {x:x, score:s, hit:hit, fit:(x.stage<=lv && x.open<=maxOpen), careful:(soft && x.open>=2)};
+  });
+  return {
+    lv:lv, hard:hard, soft:soft, reasons:reasons, maxOpen:maxOpen,
+    fit: scored.filter(function(r){ return r.fit && r.score>0; }).sort(function(p,q){ return q.score-p.score; }),
+    held:scored.filter(function(r){ return !r.fit && r.score>0; }).sort(function(p,q){ return q.score-p.score; })
+  };
+}
+
+function buildPlan(a){
+  var out=[];
+  PHASES.forEach(function(ph){
+    var items = ACTIONS.filter(function(ac){ return ac.ph===ph.id && ac.when(a); }).map(function(ac){
+      var tg = ac.target ? ac.target(a) : [];
+      return {id:ac.id, t:ac.t, why:ac.why, steps:ac.steps, target:tg, targetLabel:ac.targetLabel||'対象'};
+    });
+    if(items.length) out.push({phase:ph, items:items});
+  });
+  return out;
+}
+
+/* ══ 6. 画面の描画 ══ */
+function dlt(v, revGood, unit){
+  var s = (v>0?'+':'')+r1(v)+(unit||'');
+  var cls = Math.abs(v)<0.05 ? 'flat' : ((revGood? v<0 : v>0) ? 'up' : 'down');
+  return '<span class="delta '+cls+'">'+s+'</span>';
+}
+function renderCompare(a){
+  var c=a.cmp, h=[];
+  h.push('<div class="card"><h2><span class="k">前回との比較</span>効いたか、効かなかったか</h2>');
+  h.push('<p class="hint">出席番号で'+c.pairs.length+'名を突き合わせました。'
+    +(c.onlyCurr.length?'今回のみ在籍 '+c.onlyCurr.length+'名（番号'+nos(c.onlyCurr)+'）。':'')
+    +(c.onlyPrev.length?'前回のみ在籍 '+c.onlyPrev.length+'名（番号'+nos(c.onlyPrev)+'）。':'')
+    +'</p>');
+
+  h.push('<div class="note">満足群 '+Math.round(c.prevSat*100)+'% → '+Math.round(c.currSat*100)+'%（'
+    +dlt((c.currSat-c.prevSat)*100,false,'pt')+'）　／　不満足群 '+Math.round(c.prevUnsat*100)+'% → '
+    +Math.round(c.currUnsat*100)+'%（'+dlt((c.currUnsat-c.prevUnsat)*100,true,'pt')+'）<br>'
+    +(c.currUnsat<c.prevUnsat
+      ? '不満足群が減りました。ただし満足群の割合は中核層の天井で頭打ちになるので、判断材料は下の移動表と、不満足群にとどまった児童の人数です。'
+      : c.currUnsat>c.prevUnsat
+        ? '不満足群が増えています。どの群からどこへ動いたかを下の表で確かめてください。'
+        : '不満足群の割合は横ばいです。中身の入れ替わりがないかを下の表で確かめてください。')+'</div>');
+
+  // 移動マトリクス
+  h.push('<div class="divider"></div><h3>群の移動</h3><div class="scroll"><table class="mtx">'
+    +'<caption>行＝前回の群、列＝今回の群。対角線は変わらなかった人数です。</caption><thead><tr><th>前回＼今回</th>'
+    + GROUP_ORDER.map(function(g){ return '<th>'+g.replace('行為認知','')+'</th>'; }).join('')+'<th>計</th></tr></thead><tbody>');
+  GROUP_ORDER.forEach(function(g){
+    var row=0; GROUP_ORDER.forEach(function(k){ row+=c.mtx[g][k]; });
+    h.push('<tr><th>'+g.replace('行為認知','')+'</th>');
+    GROUP_ORDER.forEach(function(k){
+      var v=c.mtx[g][k], cls = g===k?'diag':(GROUP_RANK[k]>GROUP_RANK[g]?'up':(GROUP_RANK[k]<GROUP_RANK[g]?'down':'diag'));
+      h.push('<td class="'+(v?cls:'zero')+'">'+(v||'·')+'</td>');
+    });
+    h.push('<td class="diag">'+row+'</td></tr>');
+  });
+  h.push('</tbody></table></div>');
+  h.push('<p class="hint" style="margin-top:8px">緑は良い方向、赤は悪い方向への移動です。'
+    +(c.stayUnsat.length ? '不満足群にとどまったのは'+c.stayUnsat.length+'名（番号'+nos(c.stayUnsat.map(function(x){return x.b;}))+'）。ここが一番重い所見です。'
+                         : '不満足群にとどまった児童はいません。')+'</p>');
+
+  // 領域の変化
+  h.push('<div class="divider"></div><h3>領域の変化</h3>');
+  DOMAINS.forEach(function(d){
+    h.push('<div class="dom"><span>'+d.name+'</span>'
+      +'<span class="hint" style="font-size:12.5px">'+r1(a.means[d.key]-c.dDom[d.key])+' → '+r1(a.means[d.key])+'</span>'
+      +'<span class="val">'+dlt(c.dDom[d.key], !!d.rev)+'</span></div>');
+  });
+
+  // 項目の変化
+  var moved = c.dItem.filter(function(x){ return Math.abs(x.d)>=2; })
+                     .sort(function(x,y){ return Math.abs(y.d)-Math.abs(x.d); });
+  if(moved.length){
+    h.push('<div class="divider"></div><h3>該当人数が2名以上動いた項目</h3><div class="scroll"><table><thead><tr>'
+      +'<th class="n">項目</th><th>内容</th><th class="n">前回</th><th class="n">今回</th><th class="n">増減</th></tr></thead><tbody>');
+    moved.forEach(function(x){
+      h.push('<tr><td class="n">'+x.no+'</td><td>'+esc(x.text)+'</td><td class="n">'+x.prev+'</td><td class="n">'+x.curr+'</td>'
+        +'<td class="n">'+dlt(x.d,true)+'</td></tr>');
+    });
+    h.push('</tbody></table></div><p class="hint" style="margin-top:8px">該当人数が減った項目は緑です。打った施策と対応しているかを確かめてください。</p>');
+  }
+
+  // 個人の動き
+  h.push('<div class="movers">');
+  h.push('<div><h4>良い方に動いた児童（'+c.up.length+'名）</h4>');
+  if(!c.up.length) h.push('<p class="hint">該当なし。</p>');
+  else { h.push('<ul>'); c.up.slice(0,12).forEach(function(x){
+    h.push('<li><span class="chip">'+x.no+'</span>'+esc(x.name||'')+' — '+esc(x.gainText)+'</li>'); }); h.push('</ul>'); }
+  h.push('</div>');
+  h.push('<div><h4>悪い方に動いた児童（'+c.down.length+'名）</h4>');
+  if(!c.down.length) h.push('<p class="hint">該当なし。</p>');
+  else { h.push('<ul>'); c.down.slice(0,12).forEach(function(x){
+    h.push('<li><span class="chip g4">'+x.no+'</span>'+esc(x.name||'')+' — '+esc(x.lossText)+'</li>'); }); h.push('</ul>'); }
+  h.push('</div></div>');
+
+  h.push('<p class="hint" style="margin-top:12px">見るべき順序は、①不満足群にとどまった児童 ②悪い方に動いた児童 ③該当人数が増えた項目、です。'
+    +'良くなった数字は報告用には要りますが、次に打つ手はこの3つからしか出てきません。</p>');
+  h.push('</div>');
+  return h.join('');
+}
+
+function renderDiag(a){
+  var h=[];
+  if(a.cmp) h.push(renderCompare(a));
+  h.push('<div class="card"><h2><span class="k">STEP 02</span>学級の状態</h2>');
+  h.push('<p class="hint">対象 '+a.n+'名。'+(a.anyEstimated?'4群は入力された基準（承認≧'+a.cuts.a+'／被侵害≦'+a.cuts.h+'）で推定しています。':'4群は帳票の判定をそのまま使っています。')+'</p>');
+
+  // 発達段階
+  h.push('<div class="note"><b style="font-weight:400">推定される集団の段階 — '+esc(a.stage)+'</b><br>'+esc(a.stageWhy)+'</div>');
+
+  // 4群
+  h.push('<div class="divider"></div><h3>4群の分布</h3><div class="stack">');
+  GROUP_ORDER.forEach(function(g,i){
+    var c=(a.groups[g]||[]).length; if(!c) return;
+    h.push('<span class="s'+(i+1)+'" style="width:'+(c/a.n*100)+'%" title="'+g+' '+c+'名">'+(c/a.n>=0.09?c:'')+'</span>');
+  });
+  h.push('</div><div class="row" style="margin-top:9px;font-size:12.5px">');
+  GROUP_ORDER.forEach(function(g){
+    var l=a.groups[g]||[];
+    h.push('<span><span class="chip '+GROUP_CLS[g]+'">'+g+'</span><span class="num">'+l.length+'名 ('+Math.round(l.length/a.n*100)+'%)</span></span>');
+  });
+  h.push('</div>');
+  h.push('<p class="hint" style="margin-top:10px">満足群'+Math.round(a.satRate*100)+'%、不満足群'+Math.round(a.unsatRate*100)+'%。'
+    +(a.unsatRate>=0.15?'不満足群が15%を超えています。学級平均が良好でも、この層には届いていません。':'不満足群は抑えられています。')+'</p>');
+
+  // 領域
+  h.push('<div class="divider"></div><h3>8領域の学級平均（縦線は全国平均）</h3>');
+  DOMAINS.forEach(function(d){
+    var v=a.means[d.key], nrm=a.norms[d.key], pct=v/d.max*100, npct=nrm/d.max*100;
+    var good = d.rev ? v<=nrm : v>=nrm;
+    h.push('<div class="dom"><span>'+d.name+'</span>'
+      +'<span class="track"><i class="fill'+(d.rev?' rev':'')+'" style="width:'+Math.min(100,pct)+'%;display:block"></i>'
+      +'<i class="norm" style="left:'+Math.min(100,npct)+'%;display:block"></i></span>'
+      +'<span class="val">'+r1(v)+' <i>／'+r1(nrm)+'</i></span></div>');
+  });
+  h.push('<p class="hint" style="margin-top:8px">被侵害得点とネットいじめは、低いほうが良好です。'
+    +'配慮のスキル '+r1(a.means.care)+'点（ばらつき±'+r1(a.sds.care)+'）に対し、関わりのスキルは '+r1(a.means.rel)+'点（ばらつき±'+r1(a.sds.rel)+'）。'
+    +(a.sds.rel>a.sds.care+1.2
+      ? '関わりのばらつきが大きく、規範は共有できているのに「言い出せる子」が限られています。自治のボトルネックはここです。'
+      : 'ばらつきは同程度です。')+'</p>');
+  h.push('</div>');
+
+  // 項目別
+  var sorted = a.flags.slice().filter(function(f){ return f.count>0; }).sort(function(x,y){ return y.count-x.count || x.no-y.no; });
+  h.push('<div class="card"><h3>該当者が多い項目</h3><p class="hint">肯定項目は2点以下、被侵害・ネットいじめの項目は3点以上を「該当」として数えています。</p><div style="margin-top:12px">');
+  if(!sorted.length) h.push('<p class="hint">該当する項目はありません。</p>');
+  sorted.slice(0,18).forEach(function(f){
+    var rate=f.count/a.n, cls = rate>=0.25?'hi':(rate>=0.12?'mid':'');
+    h.push('<div class="flagrow"><span class="fn">'+f.no+'</span><span>'+esc(f.text)+'</span>'
+      +'<span class="fb"><i class="'+cls+'" style="width:'+Math.min(100,rate*100/0.4*1)+'%"></i></span>'
+      +'<span class="fc">'+f.count+'</span></div>');
+  });
+  h.push('</div><p class="hint" style="margin-top:10px">数字は該当した人数（全'+a.n+'名中）。'
+    +(sorted[0] ? '最も多いのは項目'+sorted[0].no+'「'+esc(sorted[0].text)+'」で'+sorted[0].count+'名です。' : '')+'</p></div>');
+
+  // 個別
+  h.push('<div class="card"><h3>目を配りたい児童</h3>');
+  if(!a.concerns.length){ h.push('<p class="hint">機械的な基準では、特に所見のつく児童はいませんでした。</p>'); }
+  else {
+    var lvName={3:'至急',2:'要確認',1:'気に留める'}, lvCls={3:'g4',2:'g2',1:'g1'};
+    var cnt={3:0,2:0,1:0}; a.concerns.forEach(function(c){ cnt[c.lv]++; });
+    h.push('<p class="hint">重い順に並べています。至急 '+cnt[3]+'名／要確認 '+cnt[2]+'名／気に留める '+cnt[1]+'名。'
+      +'氏名はこの画面にだけ表示され、STEP 04 の相談文には出席番号しか入りません。</p><div style="margin-top:12px">');
+    a.concerns.forEach(function(c){
+      h.push('<div class="pupil lv'+c.lv+'"><div class="pupil-h">'
+        +'<span class="no">'+c.p.no+'</span>'
+        +(c.p.name?'<span class="nm">'+esc(c.p.name)+'</span>':'')
+        +'<span class="chip '+lvCls[c.lv]+'">'+lvName[c.lv]+'</span>'
+        +'<span class="chip '+(GROUP_CLS[c.p.group]||'')+'">'+c.p.group+'</span>'
+        +'<span class="chip">承認 '+c.p.s.appr+'</span><span class="chip">被侵害 '+c.p.s.harm+'</span>'
+        +'<span class="chip">意欲 '+c.p.s.will+'/36</span><span class="chip">配慮 '+c.p.s.care+'</span><span class="chip">関わり '+c.p.s.rel+'</span>'
+        +'</div><ul>');
+      c.findings.forEach(function(f){ h.push('<li>'+esc(f.t)+'</li>'); });
+      h.push('</ul></div>');
+    });
+    h.push('</div>');
+  }
+  h.push('</div>');
+
+  // 一覧
+  h.push('<div class="card"><h3>全員の得点</h3>'
+    +'<div class="row noprint" style="margin-bottom:12px">'
+    +'<button type="button" class="btn ghost sm" id="expNo">番号だけで書き出す（共有用）</button>'
+    +'<button type="button" class="btn ghost sm" id="expName">氏名つきで書き出す（校内用）</button>'
+    +'<span class="hint">TSV形式。この端末に保存するだけで、送信は行いません。</span></div>'
+    +'<div class="scroll"><table><thead><tr>'
+    +'<th class="n">番号</th><th>氏名</th><th>4群</th>'
+    + DOMAINS.map(function(d){ return '<th class="n">'+d.name.replace('のスキル','').replace('得点','')+'</th>'; }).join('')
+    +'<th class="n">意欲計</th></tr></thead><tbody>');
+  a.pupils.forEach(function(p){
+    h.push('<tr><td class="n">'+p.no+'</td><td>'+esc(p.name||'—')+'</td>'
+      +'<td><span class="chip '+(GROUP_CLS[p.group]||'')+'">'+p.group.replace('行為認知','')+'</span></td>'
+      + DOMAINS.map(function(d){ return '<td class="n">'+p.s[d.key]+'</td>'; }).join('')
+      +'<td class="n">'+p.s.will+'</td></tr>');
+  });
+  h.push('</tbody></table></div></div>');
+
+  $('#diagOut').innerHTML = h.join('');
+  var e1=$('#expNo'), e2=$('#expName');
+  if(e1) e1.addEventListener('click', function(){ exportTsv(false); });
+  if(e2) e2.addEventListener('click', function(){ exportTsv(true); });
+}
+
+function renderRx(a){
+  var rx = prescribe(a), h=[];
+  var typeCls = {'SGE':'g3','SST':'g1','協同課題':'g2'};
+  h.push('<div class="card"><h2><span class="k">処方</span>この学級で使えるエクササイズ</h2>');
+  h.push('<p class="hint">構成的グループエンカウンター（SGE）・ソーシャルスキルトレーニング（SST）・協同課題から、'
+    +'該当のあった項目に対応するものを選んでいます。並び順は該当人数の多さです。</p>');
+
+  h.push('<div class="note'+(rx.hard?' alert':'')+'">'
+    +'この学級の段階は<b style="font-weight:400">'+esc(a.stage)+'</b>、自己開示の上限は<b style="font-weight:400">レベル'+rx.maxOpen+'</b>としました。<br>'
+    +(rx.reasons.length ? '判断の根拠：'+esc(rx.reasons.join('。'))+'。<br>' : '')
+    +(rx.hard
+      ? 'この状態で深い自己開示を求めると、傷つき体験がその場で再現されます。自己開示のない協同課題と、行動の型を教えるSSTから始めてください。'
+      : rx.soft
+        ? '自己開示をともなうエクササイズも実施できますが、組み合わせは必ず教師が決めてください。下で「慎重に」と付いたものは、被害を訴えている児童と加害の可能性がある児童を同じ組にしないことが前提です。'
+        : '自己開示をともなうエクササイズにも耐えられる状態です。ただし段階を飛ばさず、協同課題からリレーション形成へ順に進めてください。')
+    +'</div>');
+
+  if(rx.held.length){
+    h.push('<p class="hint" style="margin-top:10px"><b style="font-weight:400;color:var(--alert)">今は見送るもの</b>：'
+      + rx.held.map(function(r){ return esc(r.x.name); }).join('、')
+      +'。項目としては該当しますが、'
+      +(rx.hard?'自己開示の深さがこの学級の状態に合いません。':'発達段階が届いていません。')
+      +'次回の調査で不満足群が減り、被侵害得点が下がってから検討してください。</p>');
+  }
+
+  if(!rx.fit.length){
+    h.push('<p class="hint">該当項目に対応するエクササイズはありませんでした。</p></div>');
+    return h.join('');
+  }
+
+  h.push('<div class="divider"></div>');
+  rx.fit.slice(0,8).forEach(function(r){
+    var x=r.x;
+    h.push('<div class="act"><div class="act-h"><input type="checkbox" id="rx_'+x.id+'">'
+      +'<label class="at" for="rx_'+x.id+'"><span class="chip '+(typeCls[x.type]||'')+'">'+x.type+'</span>'
+      +esc(x.name)+'<span class="chip">約'+x.min+'分</span>'
+      +(r.careful?'<span class="chip g4">慎重に</span>':'')+'</label></div>');
+    h.push('<p class="why">'+esc(x.aim)+'</p>');
+    h.push('<p class="tg" style="margin-bottom:8px"><b>対応する項目</b>'
+      + r.hit.map(function(i){ return '<span class="chip">'+i+'（'+a.fc(i)+'名）</span>'; }).join('')+'</p>');
+    h.push('<ol>');
+    x.steps.forEach(function(s){ h.push('<li>'+esc(s)+'</li>'); });
+    h.push('</ol>');
+    if(x.share && x.share.length){
+      h.push('<p class="tg"><b>シェアリングの問い</b></p><ol style="margin-top:2px">');
+      x.share.forEach(function(s){ h.push('<li>'+esc(s)+'</li>'); });
+      h.push('</ol>');
+    }
+    h.push('<p class="tg" style="color:var(--alert)"><b style="color:var(--ink-3)">注意</b>'+esc(x.caution)+'</p>');
+    h.push('</div>');
+  });
+
+  h.push('<div class="divider"></div><h3>実施するときの約束</h3>'
+    +'<ol style="font-size:13.5px;color:var(--ink-2)">'
+    +'<li>SGEはエクササイズ本体ではなく、そのあとのシェアリングが目的です。時間が足りないときは、エクササイズを短くしてシェアリングを残してください。順序を逆にすると「楽しかった」で終わり、行動は変わりません。</li>'
+    +'<li>「パスしてよい」を毎回、始める前に言葉にしてください。一度でも強制すると、次から本音が出なくなります。</li>'
+    +'<li>ペアや班の組み合わせは教師が決めてください。自由に選ばせた瞬間、いつもの関係がそのままなぞられ、エクササイズの意味が消えます。</li>'
+    +'<li>SSTは〈教示 → モデル → 練習 → 返し → 定着〉の5つで1セットです。練習だけをやっても定着しません。とくに最後の「定着」——掲示して、使えた場面を報告させるところまでを1回とみなしてください。</li>'
+    +'<li>SSTのフィードバックでは、直すところを言わせないでください。よかった点だけを具体的に言わせます。修正は教師が個別に行います。</li>'
+    +'<li>1回で変わることを期待しないでください。同じスキルを、場面を変えて3回はやります。1回で終わったものは、やらなかったのとほぼ同じです。</li>'
+    +'</ol></div>');
+  return h.join('');
+}
+
+function renderPlan(a){
+  var plan = buildPlan(a), h=[];
+  h.push('<div class="card"><h2><span class="k">STEP 03</span>実行策</h2>'
+    +'<p class="hint">診断結果から自動で組み立てた案です。順序は〈安全 → 承認 → 自治〉。この順を飛ばして自治を先に始めると、決定権を持つ中核層が強くなり、周辺との差が開きます。チェックは印刷用で、保存はされません。</p>'
+    +'<div class="row noprint" style="margin-top:14px"><button type="button" class="btn ghost sm" onclick="window.print()">印刷する</button></div></div>');
+
+  plan.forEach(function(g){
+    h.push('<div class="card phase"><div class="phase-h"><span class="pn">PHASE '+g.phase.id+'</span>'
+      +'<span class="pt">'+g.phase.name+'</span><span class="pw">'+g.phase.when+'</span></div>');
+    g.items.forEach(function(it){
+      h.push('<div class="act"><div class="act-h"><input type="checkbox" id="'+it.id+'"><label class="at" for="'+it.id+'">'+esc(it.t)+'</label></div>');
+      h.push('<p class="why">'+esc(it.why)+'</p><ol>');
+      it.steps.forEach(function(s){ h.push('<li>'+esc(s)+'</li>'); });
+      h.push('</ol>');
+      if(it.target && it.target.length){
+        h.push('<p class="tg"><b>'+it.targetLabel+'</b>'
+          + it.target.map(function(p){ return '<span class="chip">'+p.no+(p.name?' '+esc(p.name):'')+'</span>'; }).join('')+'</p>');
+      }
+      h.push('</div>');
+    });
+    h.push('</div>');
+  });
+
+  h.push(renderRx(a));
+
+  h.push('<div class="card"><h3>効果の測り方</h3>'    +'<p class="hint">次のアンケートまで待たないでください。2週間ごとに、記名で3問だけ聞きます。</p>'
+    +'<ol style="font-size:14px;color:var(--ink-2)"><li>今週、休み時間に一人だった日はある？</li>'
+    +'<li>今週、「やめて」と言えなかったことはある？</li><li>今週、自分から誘った？</li></ol>'
+    +'<p class="hint" style="margin-top:10px">次回の目標は、不満足群 '+(a.groups['不満足群']||[]).length+'名 → '+Math.max(0,Math.floor((a.groups['不満足群']||[]).length/2))+'名以下、'
+    +'該当者が最多の項目 '+(a.flags.slice().sort(function(x,y){return y.count-x.count;})[0]||{count:0}).count+'名 → 半減、'
+    +'関わりのスキルの最低値 '+Math.min.apply(null,a.pupils.map(function(p){return p.s.rel;}))+'点 → +6点。</p>'
+    +'<p class="hint">満足群の割合は追わないでください。中核層はすでに天井近くにいるので、そこを見ても数字は動きません。周辺の層の指標だけを見る——それがこの学級の指標です。</p></div>');
+
+  $('#planOut').innerHTML = h.join('');
+}
+
+/* ══ 7. 匿名の相談文 ══ */
+function renderPrompt(a){
+  var h=[];
+  h.push('<div class="card"><h2><span class="k">STEP 04</span>AIに渡す相談文をつくる</h2>'
+    +'<p class="hint">氏名・学校名・学級名は入りません。出席番号と得点だけで組み立てます。生成後の本文は編集できます。コピーしてお使いのAIに貼り付けてください。</p>');
+
+  h.push('<div class="scope">'
+    +'<label><input type="radio" name="scope" value="summary"> 集計だけ渡す<span>学級全体の数字と項目別の該当人数のみ。個人の行は入りません。</span></label>'
+    +'<label><input type="radio" name="scope" value="focus" checked> 集計＋要対応の児童<span>所見のついた児童だけ、出席番号と39項目の素点を添えます。</span></label>'
+    +'<label><input type="radio" name="scope" value="all"> 集計＋全員<span>全員ぶんの素点を添えます。人数が多いと本文が長くなります。</span></label>'
+    +'</div>');
+
+  h.push('<div class="row" style="margin-bottom:10px">'
+    +'<label><input type="checkbox" id="optAsk" checked> 学級経営の実行策を求める文をつける</label>'
+    +'<label style="margin-left:14px"><input type="checkbox" id="optItems" checked> 質問項目の文言を添える（AIの解釈精度が上がります）</label></div>');
+
+  h.push('<label for="extra" style="display:block;margin-bottom:5px">補足したい事情（任意）</label>'
+    +'<input type="text" id="extra" placeholder="例：2学期から学級編成をやり直した／特別支援の在籍が数名いる　※氏名や学校名は書かないでください">');
+
+  h.push('<div class="audit"><div><h4>相談文に入るもの</h4><ul>'
+    +'<li>出席番号</li><li>39項目の素点（1〜4）</li><li>領域ごとの合計と学級平均</li><li>4群の分布</li><li>入力した全国平均</li></ul></div>'
+    +'<div><h4>相談文に入らないもの</h4><ul>'
+    +'<li>氏名・ふりがな</li><li>学校名・学級名・自治体名</li><li>実施日・年度</li><li>性別・国籍・在籍状況</li><li>この画面に貼り付けた原文</li></ul></div></div>');
+
+  h.push('<div class="row" style="margin-bottom:10px"><button type="button" class="btn" id="btnGen">相談文をつくる</button>'
+    +'<button type="button" class="btn ghost" id="btnCopy" disabled>コピーする</button>'
+    +'<span class="hint" id="copyMsg"></span></div>');
+  h.push('<label class="sr" for="promptOut">相談文</label><textarea id="promptOut" rows="16" spellcheck="false" placeholder="「相談文をつくる」を押すと、ここに本文が出ます。"></textarea>');
+  h.push('</div>');
+
+  $('#promptWrap').innerHTML = h.join('');
+
+  $('#btnGen').addEventListener('click', function(){
+    var scope = ($$('input[name=scope]').filter(function(r){ return r.checked; })[0]||{}).value || 'focus';
+    var txt = buildPrompt(a, scope, $('#optAsk').checked, $('#optItems').checked, $('#extra').value.trim());
+    $('#promptOut').value = txt;
+    $('#btnCopy').disabled = false;
+    $('#copyMsg').textContent = '約'+txt.length.toLocaleString()+'文字。氏名は含まれていません。';
+  });
+  $('#btnCopy').addEventListener('click', function(){
+    var ta=$('#promptOut');
+    ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+    function done(ok){
+      $('#copyMsg').textContent = ok ? 'コピーしました。AIの入力欄に貼り付けてください。'
+                                     : '本文を選択した状態にしました。Ctrl+C（Macは⌘+C）でコピーしてください。';
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(function(){ done(true); }, function(){ done(false); });
+    } else {
+      var ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+      done(ok);
+    }
+  });
+}
+
+function buildPrompt(a, scope, withAsk, withItems, extra){
+  var L=[];
+  L.push('あなたは学級集団づくりに詳しい教育心理の専門家です。以下は、ある小学校の1学級で実施したQ-U（学級満足度・学校生活意欲）調査の結果です。');
+  L.push('個人が特定されないよう、氏名は出席番号に置き換えてあります。学校名・学級名・実施日は含みません。');
+  L.push('');
+  L.push('■ 学級の概要');
+  L.push('・人数：'+a.n+'名');
+  L.push('・4群の分布：'+GROUP_ORDER.map(function(g){ return g+' '+(a.groups[g]||[]).length+'名'; }).join('／'));
+  L.push('');
+  L.push('■ 領域別の得点（学級平均／全国平均／満点）');
+  DOMAINS.forEach(function(d){
+    L.push('・'+d.name+'：'+r1(a.means[d.key])+' ／ '+r1(a.norms[d.key])+' ／ '+d.max+'点満点'
+      +(d.rev?'（高いほど問題）':''));
+  });
+  L.push('・学校生活意欲（友達関係＋学習意欲＋学級の雰囲気）：'+r1(a.means.will)+' ／ 36点満点');
+  L.push('・対人スキル（配慮＋関わり）：'+r1(a.means.skill)+' ／ 64点満点');
+  L.push('・関わりのスキルのばらつき（標準偏差）：'+r1(a.sds.rel)+'　配慮のスキル：'+r1(a.sds.care));
+  L.push('');
+  L.push('■ 項目別の該当人数（全'+a.n+'名中）');
+  L.push('※肯定項目は2点以下、被侵害・ネットいじめ（項目16〜23）は3点以上を「該当」としています。');
+  a.flags.filter(function(f){ return f.count>0; })
+         .sort(function(x,y){ return y.count-x.count || x.no-y.no; })
+         .forEach(function(f){
+    L.push('・項目'+f.no+(withItems?'「'+f.text+'」':'')+'（'+f.domain.name+'）：'+f.count+'名');
+  });
+  L.push('');
+
+  if(a.cmp){
+    var c=a.cmp;
+    L.push('■ 前回調査との比較（同一学級・出席番号で'+c.pairs.length+'名を対応づけ）');
+    L.push('・満足群の割合：'+Math.round(c.prevSat*100)+'% → '+Math.round(c.currSat*100)+'%');
+    L.push('・不満足群の割合：'+Math.round(c.prevUnsat*100)+'% → '+Math.round(c.currUnsat*100)+'%');
+    L.push('・群の移動（前回の群 → 今回の群：人数）');
+    GROUP_ORDER.forEach(function(g){
+      GROUP_ORDER.forEach(function(k){
+        if(c.mtx[g][k]) L.push('　　'+g+' → '+k+'：'+c.mtx[g][k]+'名'+(g===k?'（変化なし）':''));
+      });
+    });
+    if(c.stayUnsat.length) L.push('・2回続けて不満足群だった児童：番号'+nos(c.stayUnsat.map(function(x){return x.b;})));
+    L.push('・領域平均の変化：'+DOMAINS.map(function(d){
+      var v=c.dDom[d.key]; return d.name+' '+(v>0?'+':'')+r1(v);
+    }).join('／'));
+    var mv = c.dItem.filter(function(x){ return Math.abs(x.d)>=2; }).sort(function(x,y){ return Math.abs(y.d)-Math.abs(x.d); });
+    if(mv.length){
+      L.push('・該当人数が2名以上動いた項目（前回 → 今回）');
+      mv.forEach(function(x){ L.push('　　項目'+x.no+(withItems?'「'+x.text+'」':'')+'：'+x.prev+'名 → '+x.curr+'名'); });
+    }
+    if(c.down.length) L.push('・悪い方に動いた児童：'+c.down.map(function(x){ return '番号'+x.no+'（'+x.lossText+'）'; }).join('、'));
+    if(c.up.length)   L.push('・良い方に動いた児童：'+c.up.map(function(x){ return '番号'+x.no+'（'+x.gainText+'）'; }).join('、'));
+    if(c.onlyCurr.length) L.push('・今回のみ在籍：番号'+nos(c.onlyCurr));
+    if(c.onlyPrev.length) L.push('・前回のみ在籍：番号'+nos(c.onlyPrev));
+    L.push('');
+  }
+
+  if(scope!=='summary'){
+    var list = scope==='all' ? a.pupils : a.concerns.map(function(c){ return c.p; });
+    L.push('■ 個票（出席番号／4群／領域合計／39項目の素点）');
+    L.push('領域合計の並び：友達関係・学習意欲・学級の雰囲気・承認・被侵害・ネットいじめ・配慮・関わり');
+    L.push('素点は項目1から項目39の順です。');
+    list.forEach(function(p){
+      L.push('番号'+p.no+'｜'+p.group
+        +'｜'+DOMAINS.map(function(d){ return p.s[d.key]; }).join('-')
+        +'｜'+p.v.join(','));
+    });
+    L.push('');
+    if(scope==='focus') L.push('※上記は、機械的な基準で所見がついた児童のみです。ほかの'+(a.n-list.length)+'名は基準に触れていません。');
+    L.push('');
+  }
+
+  if(withItems){
+    L.push('■ 質問項目の文言');
+    ITEMS.forEach(function(t,i){
+      var d = DOMAINS.filter(function(x){ return (i+1)>=x.from && (i+1)<=x.to; })[0];
+      L.push((i+1)+'. '+t+'（'+d.name+(d.rev?'・逆転':'')+'）');
+    });
+    L.push('');
+  }
+
+  if(extra){ L.push('■ 学級の事情（担任からの補足）'); L.push(extra); L.push(''); }
+
+  var rx = prescribe(a);
+  L.push('■ エクササイズを選ぶうえでの制約');
+  L.push('・推定される集団の発達段階：'+a.stage);
+  L.push('・自己開示の上限：レベル'+rx.maxOpen+'（0=なし／1=浅い／2=中／3=深い）');
+  if(rx.reasons.length) L.push('・判断の根拠：'+rx.reasons.join('。')+'。');
+  L.push('・'+(rx.hard
+    ? 'この状態で深い自己開示を求めるエクササイズは、傷つき体験を再現する恐れがあります。提案しないでください。'
+    : rx.soft
+      ? '自己開示をともなうエクササイズも実施できますが、組み合わせは教師が決める前提で提案してください。'
+      : '自己開示をともなうエクササイズにも耐えられる状態ですが、発達段階を飛ばさないでください。'));
+  L.push('');
+
+  if(withAsk){
+    L.push('■ お願いしたいこと');
+    L.push('この学級を自治的な学級集団に育てるために、以下を出してください。');
+    L.push('1. データから読める学級の構造（平均だけでなく、ばらつきと層の分かれ方に注目してください）。');
+    L.push('2. 学級経営の工夫では扱えない、校内の組織で対応すべき所見があれば、出席番号を挙げて最初に指摘してください。');
+    L.push('3. 明日から実行できる具体策。誰が・いつ・何分で・どんな言葉かけで行うかまで書いてください。抽象的な心構えは不要です。');
+    L.push('4. 構成的グループエンカウンター（SGE）とソーシャルスキルトレーニング（SST）の具体的なエクササイズを、該当項目に対応づけて挙げてください。SGEは〈ねらい・手順・シェアリングの問い・注意点〉、SSTは〈教示・モデリング・リハーサル・フィードバック・定着化〉の5段階に分けて、そのまま学級で使える形で書いてください。上に示した自己開示の上限を必ず守り、超えるものは「今は見送る」として理由とともに示してください。');
+    L.push('5. 対象となる児童は出席番号で示してください。');
+    L.push('6. 効果の測り方。次回調査を待たずに2週間単位で確認できる指標にしてください。');
+    if(a.cmp){
+      L.push('7. 前回からの変化について、①この半年で効いたと考えられること ②効かなかったこと ③悪化した部分の原因として考えられる学級の出来事、を分けて述べてください。とくに2回続けて不満足群だった児童については、学級全体への施策では届かなかったものとして、個別の手立てを別立てで示してください。');
+    }
+    L.push('');
+    L.push('順序は〈安全の確保 → 承認の配り直し → 主導権を渡す〉としてください。安全が確保されないまま自治的な活動を始めると、すでに力を持つ層がさらに強くなることに留意してください。');
+  }
+  return L.join('\n');
+}
+
+/* ══ 8. 画面遷移 ══ */
+function go(i){
+  $$('section.step').forEach(function(s,k){ s.classList.toggle('on', k===i); });
+  $$('nav.rail button').forEach(function(b,k){ b.setAttribute('aria-current', k===i?'true':'false'); });
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+$$('nav.rail button').forEach(function(b){
+  b.addEventListener('click', function(){ if(!b.disabled) go(+b.dataset.go); });
+});
+
+/* ══ 9. 全国平均の入力欄 ══ */
+(function(){
+  var box=$('#normBox');
+  box.innerHTML = DOMAINS.map(function(d){
+    return '<label style="margin-right:6px">'+d.name+' <input type="number" step="0.1" data-norm="'+d.key+'" value="'+d.norm+'"></label>';
+  }).join('');
+})();
+function readNorms(){
+  var n={}; DOMAINS.forEach(function(d){
+    var el=$('input[data-norm='+d.key+']');
+    var v=parseFloat(el && el.value);
+    n[d.key] = isNaN(v)?d.norm:v;
+  });
+  n.will = n.friend+n.learn+n.mood;
+  n.skill = n.care+n.rel;
+  return n;
+}
+
+/* ══ 10. 実行 ══ */
+function currentMode(){
+  var r = $$('input[name=mode]').filter(function(x){ return x.checked; })[0];
+  return r ? r.value : 'one';
+}
+$$('input[name=mode]').forEach(function(r){
+  r.addEventListener('change', function(){
+    var two = currentMode()==='two';
+    $('#prevBox').style.display = two ? 'block' : 'none';
+    $('#lblRaw').textContent = two ? '今回（2回目）の帳票' : '帳票データ';
+  });
+});
+
+$('#btnRead').addEventListener('click', function(){
+  var raw = $('#raw').value;
+  if(!raw.trim()){ msg('データが空です。帳票の行を貼り付けてください。', false); return; }
+  var res = parse(raw);
+  if(res.pupils.length < 2){
+    msg('読み取れた児童が'+res.pupils.length+'人です。1行に1人、1〜4の数字が39個（または「計」列を含む47個）並んでいるか確かめてください。', false);
+    return;
+  }
+  var cuts = { a: +$('#cutA').value || 19, h: +$('#cutH').value || 11 };
+  var norms = readNorms();
+  var a = analyze(res.pupils, norms, cuts);
+  var extra = '';
+
+  if(currentMode()==='two'){
+    var pRaw = $('#rawPrev').value;
+    if(!pRaw.trim()){ msg('「2回分を比べる」が選ばれていますが、前回の帳票が空です。', false); return; }
+    var pres = parse(pRaw);
+    if(pres.pupils.length < 2){ msg('前回の帳票から読み取れた児童が'+pres.pupils.length+'人です。形式を確かめてください。', false); return; }
+    var pa = analyze(pres.pupils, norms, cuts);
+    a.cmp = compare(pa, a);
+    state.prev = pa;
+    extra = ' 前回分'+pres.pupils.length+'名と突き合わせ、'+a.cmp.pairs.length+'名を比較しました。';
+  } else { state.prev = null; }
+
+  state.pupils = res.pupils; state.skipped = res.skipped;
+  state.norms = norms; state.cuts = cuts; state.analysis = a;
+
+  renderDiag(a); renderPlan(a); renderPrompt(a);
+  $$('nav.rail button').forEach(function(b){ b.disabled=false; });
+
+  msg(res.pupils.length+'名を読み取りました。'+extra
+    + (res.skipped.length ? ' '+res.skipped.length+'行は数字の並びが合わず読み飛ばしました（'+res.skipped.map(function(s){return s.line+'行目';}).join('、')+'）。見出し行や合計行なら問題ありません。' : ''), true);
+  go(1);
+});
+
+/* 端末内へのファイル書き出し（通信は発生しません） */
+function download(name, text){
+  var blob = new Blob(['\ufeff'+text], {type:'text/tab-separated-values;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+function exportTsv(withName){
+  var a = state.analysis; if(!a) return;
+  var head = ['出席番号'].concat(withName?['氏名']:[]).concat(['4群'])
+    .concat(DOMAINS.map(function(d){ return d.name; }))
+    .concat(['学校生活意欲計','対人スキル計'])
+    .concat(ITEMS.map(function(_,i){ return '項目'+(i+1); }));
+  var rows = [head.join('\t')];
+  a.pupils.forEach(function(p){
+    rows.push([p.no].concat(withName?[p.name||'']:[]).concat([p.group])
+      .concat(DOMAINS.map(function(d){ return p.s[d.key]; }))
+      .concat([p.s.will, p.s.skill]).concat(p.v).join('\t'));
+  });
+  download('qu-shukei'+(withName?'-meibo':'-bangou')+'.tsv', rows.join('\r\n'));
+}
+function msg(t, ok){
+  $('#parseMsg').innerHTML = '<div class="flash '+(ok?'ok':'bad')+'">'+esc(t)+'</div>';
+}
+$('#btnClear').addEventListener('click', function(){ $('#raw').value=''; $('#parseMsg').innerHTML=''; });
+
+/* ══ 11. 見本データ（架空・自動生成） ══ */
+$('#btnSample').addEventListener('click', function(){
+  var two = currentMode()==='two';
+  $('#raw').value = makeSample(1);
+  if(two) $('#rawPrev').value = makeSample(0);
+  $('#parseMsg').innerHTML = '<div class="flash ok">架空の見本データ28名'
+    + (two ? '（前回・今回の2回分）' : '')
+    + 'を入れました。実在の学級のものではありません。「読み取って診断する」を押してください。</div>';
+});
+function makeSample(round){
+  var seed = round ? 20260731 : 20260615;
+  function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
+  function pick(lo,hi){ return lo + Math.floor(rnd()*(hi-lo+1)); }
+  var kana=['あおい','はると','ゆい','そうた','みお','れん','ひなた','りく','さくら','かえで','いつき','こはる',
+            'あさひ','なぎさ','ゆうと','ののか','たいが','すず','けんと','まひろ','りお','あかり','そら','ひまり',
+            'ゆづき','かなた','みなと','しおり'];
+  // round 0（前回）→ round 1（今回）で、一部の児童の状態を変えて比較の見本にする
+  var before = ['good','good','good','good','good','good','good','good','good','good','good','mid','mid','mid',
+                'unrec','unrec','harm','harm','harm','harm','unsat','unsat','unsat','unsat','alone','alone','quiet','low'];
+  var after  = ['good','good','good','good','good','good','good','good','good','good','good','good','good','mid',
+                'good','unrec','good','mid','harm','harm','mid','unsat','unsat','unsat','good','alone','quiet','low'];
+  var plan = round ? after : before;
+  var rows=[];
+  plan.forEach(function(kind,i){
+    var v=[];
+    for(var q=1;q<=39;q++){
+      var rev = q>=16 && q<=23, base;
+      if(kind==='good')      base = rev ? 1 : pick(3,4);
+      else if(kind==='mid')  base = rev ? pick(1,2) : pick(3,4);
+      else if(kind==='unrec')base = rev ? 1 : (q>=10&&q<=15 ? pick(1,3) : pick(3,4));
+      else if(kind==='harm') base = rev ? (q<=18?pick(3,4):pick(1,2)) : pick(3,4);
+      else if(kind==='unsat')base = rev ? pick(2,4) : (q>=10&&q<=15 ? pick(2,3) : pick(2,4));
+      else if(kind==='alone')base = rev ? (q===19||q===20?pick(3,4):1) : pick(3,4);
+      else if(kind==='quiet')base = rev ? pick(1,2) : (q>=32 ? pick(1,3) : pick(3,4));
+      else                   base = rev ? pick(2,4) : pick(1,2);
+      v.push(Math.max(1,Math.min(4,base)));
+    }
+    rows.push([i+1, '見本'+kana[i]].concat(v).join('\t'));
+  });
+  return rows.join('\n');
+}
+
+/* ══ 12. PDFの全体表を読む ─────────────────
+   pdf.js（Apache-2.0）を同一オリジンの vendor/ から読み込みます。
+   PDFはブラウザの中だけで解析され、どこにも送られません。
+   帳票は座標で組まれているので、読み取り順ではなく y 座標で行を復元します。 ── */
+var PDF_TOL = 3;      // 同じ行とみなす y のずれ
+var PDF_GAP = 4;      // 隣接文字を連結する x のすきま
+
+function pdfRows(items){
+  var rows=[];
+  items.filter(function(i){ return i.s!==''; })
+       .sort(function(a,b){ return b.y-a.y || a.x-b.x; })
+       .forEach(function(it){
+    var r=null;
+    for(var k=0;k<rows.length;k++){ if(Math.abs(rows[k].y-it.y)<=PDF_TOL){ r=rows[k]; break; } }
+    if(!r){ r={y:it.y, items:[]}; rows.push(r); }
+    r.items.push(it);
+  });
+  rows.forEach(function(r){ r.items.sort(function(a,b){ return a.x-b.x; }); });
+  return rows;
+}
+function joinFrags(frags){
+  var out=[], cur=null;
+  frags.forEach(function(f){
+    if(cur && f.x-(cur.x+cur.w) < PDF_GAP){ cur.s+=f.s; cur.w=f.x+f.w-cur.x; }
+    else { cur={s:f.s, x:f.x, w:f.w}; out.push(cur); }
+  });
+  return out.map(function(o){ return o.s; });
+}
+function pdfToTsv(items){
+  var rows = pdfRows(items), out=[], no=0;
+  rows.forEach(function(r){
+    var nums = r.items.filter(function(i){ return /^\d+$/.test(i.s); }).map(function(i){ return +i.s; });
+    if(nums.length<39) return;
+    if(nums.filter(function(v){ return v>=1&&v<=4; }).length<39) return;   // 合計行などを除く
+    var texts = joinFrags(r.items.filter(function(i){ return !/^\d+$/.test(i.s); }));
+    var grp = texts.filter(function(t){ return /満足|非承認|侵害/.test(t); })[0] || '';
+    var name = texts.filter(function(t){ return !/満足|非承認|侵害/.test(t); }).join('');
+    no++;
+    out.push([no, name||('番号'+no), grp].concat(nums).join('\t'));
+  });
+  return out;
+}
+function readPdf(file, target){
+  var box = $('#pdfMsg');
+  box.innerHTML = '<div class="flash ok">読み取っています…</div>';
+  var fr = new FileReader();
+  fr.onload = function(){
+    var buf = new Uint8Array(fr.result);
+    import('./vendor/pdf.min.mjs').then(function(pdfjs){
+      pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
+      return pdfjs.getDocument({data:buf}).promise;
+    }).then(function(doc){
+      var pages=[]; for(var p=1;p<=doc.numPages;p++) pages.push(p);
+      return Promise.all(pages.map(function(p){
+        return doc.getPage(p).then(function(pg){ return pg.getTextContent(); });
+      }));
+    }).then(function(contents){
+      var all=[];
+      contents.forEach(function(tc){
+        tc.items.forEach(function(i){
+          var s=(i.str||'').trim();
+          if(s) all.push({s:s, x:i.transform[4], y:i.transform[5], w:i.width||0});
+        });
+      });
+      var lines = pdfToTsv(all);
+      if(!lines.length){
+        box.innerHTML = '<div class="flash bad">児童の行が見つかりませんでした。画像として取り込まれたPDF（スキャンしたもの）は読めません。Excelからの貼り付けをお使いください。</div>';
+        return;
+      }
+      target.value = lines.join('\n');
+      box.innerHTML = '<div class="flash ok">'+lines.length+'行を読み取り、'
+        +(target.id==='rawPrev'?'前回':'今回')+'の欄に入れました。'
+        +'出席番号は帳票に文字として入っていないため、表の並び順をそのまま番号としています。'
+        +'名簿順でない場合は、番号の列を直してから診断してください。</div>';
+    }).catch(function(e){
+      box.innerHTML = '<div class="flash bad">PDFを読めませんでした。'
+        + (/Failed to fetch|import|Cannot find|dynamically imported/i.test(String(e))
+           ? 'このページと同じ場所に vendor/pdf.min.mjs と vendor/pdf.worker.min.mjs を置いてください。置かなくても、Excelからの貼り付けはそのまま使えます。'
+           : esc(String((e && e.message) || e)))
+        + '</div>';
+    });
+  };
+  fr.readAsArrayBuffer(file);
+}
+(function(){
+  var zone=$('#pdfZone'), inp=$('#pdfFile');
+  function target(){ return (currentMode()==='two' && document.activeElement===$('#rawPrev')) ? $('#rawPrev') : $('#raw'); }
+  $('#btnPdf').addEventListener('click', function(){ inp.click(); });
+  inp.addEventListener('change', function(){ if(inp.files[0]) readPdf(inp.files[0], target()); inp.value=''; });
+  ['dragenter','dragover'].forEach(function(ev){
+    zone.addEventListener(ev, function(e){ e.preventDefault(); zone.style.borderColor='var(--accent)'; });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    zone.addEventListener(ev, function(e){ e.preventDefault(); zone.style.borderColor='var(--rule)'; });
+  });
+  zone.addEventListener('drop', function(e){
+    var f = e.dataTransfer && e.dataTransfer.files[0];
+    if(f) readPdf(f, target());
+  });
+})();
+
+})();
+
+</script>
+</body>
+</html>
